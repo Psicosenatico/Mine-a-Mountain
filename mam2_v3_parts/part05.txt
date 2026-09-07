@@ -1,0 +1,200 @@
+box.TextColor3=COLORS.Font
+box.Text=tostring(UIState.values[id])
+box.ClearTextOnFocus=false
+box.Parent=r
+corner(box,3)
+stroke(box,COLORS.Outline,0.2)
+box.FocusLost:Connect(function()
+UIState.values[id]=box.Text
+setControlValue(id,box.Text,false)
+end)
+return r
+end
+local function addKey(parentObj,id,label,default)
+if UIState.values[id]==nil then UIState.values[id]=default or "None" end
+local r=rowBase(parentObj,26)
+local l=textLabel(r,label,11,false)
+l.Position=UDim2.fromOffset(3,0)
+l.Size=UDim2.new(1,-76,1,0)
+local b=Instance.new("TextButton")
+b.AnchorPoint=Vector2.new(1,.5)
+b.Position=UDim2.new(1,-3,.5,0)
+b.Size=UDim2.fromOffset(68,21)
+b.BackgroundColor3=Color3.fromRGB(15,15,17)
+b.BorderSizePixel=0
+b.Font=Enum.Font.Code
+b.TextSize=10
+b.TextColor3=COLORS.Font
+b.Text=tostring(UIState.values[id])
+b.AutoButtonColor=false
+b.Parent=r
+corner(b,3);stroke(b,COLORS.Outline,0.2)
+b.Activated:Connect(function()
+b.Text="..."
+local conn
+conn=UIS.InputBegan:Connect(function(i,p)
+if p then return end
+if i.UserInputType==Enum.UserInputType.Keyboard then
+UIState.values[id]=i.KeyCode.Name
+b.Text=i.KeyCode.Name
+conn:Disconnect()
+end
+end)
+end)
+return r
+end
+local function addColor(parentObj,id,label,default)
+UIState.values[id]=UIState.values[id] or default
+local r=rowBase(parentObj,26)
+local l=textLabel(r,label,11,false)
+l.Position=UDim2.fromOffset(3,0)
+l.Size=UDim2.new(1,-54,1,0)
+local sw=Instance.new("Frame")
+sw.AnchorPoint=Vector2.new(1,.5)
+sw.Position=UDim2.new(1,-3,.5,0)
+sw.Size=UDim2.fromOffset(44,20)
+sw.BackgroundColor3=default or COLORS.Accent
+sw.BorderSizePixel=0
+sw.Parent=r
+corner(sw,4);stroke(sw,COLORS.Outline,0)
+return r
+end
+local RARITIES={
+{label="C / Comum",value="C / Common"},
+{label="U / Incomum",value="U / Uncommon"},
+{label="R / Raro",value="R / Rare"},
+{label="E / Épico",value="E / Epic"},
+{label="L / Lendário",value="L / Legendary"},
+{label="M / Mítico",value="M / Mythic"},
+{label="E / Empyrean",value="E / Empyrean"},
+{label="P / Pulsar",value="P / Pulsar"},
+{label="Q / Quasar",value="Q / Quasar"},
+}
+local BOULDERS={"Mossite","Voltite","Gildrite","Rimeveil","Nocturnite"}
+local MUTATIONS={
+{label="Aurora",value="Aurora"},{label="Lua Sangrenta",value="Bloodmoon"},
+{label="Desgastado",value="Dustworn"},{label="Fogo",value="Fire"},
+{label="Gelo",value="Frost"},{label="Dourado",value="Gilded"},
+{label="Sortudo",value="Lucky"},{label="Derretido",value="Molten"},
+{label="Ônix",value="Onyx"},{label="Veneno",value="Poison"},
+{label="Radioativo",value="Radioactive"},{label="Queda Estelar",value="Starfall"},
+{label="Terminus",value="Terminus"},{label="Trovão",value="Thunder"},
+{label="Verdejante",value="Verdant"},{label="Voltaico",value="Voltaic"},
+{label="Molhado",value="Wet"},
+}
+local SIZES={
+{label="P / Pequeno",value="S / Small"},{label="M / Médio",value="M / Medium"},
+{label="G / Grande",value="L / Large"},{label="GG / Extra Grande",value="XL / Extra Large"},
+{label="Gigante",value="Giant"},{label="Colossal",value="Colossal"},
+{label="Titã",value="Titan"},{label="Leviatã",value="Leviathan"},
+}
+local RUNE_RARITIES={
+{label="1 - Sorte / Velocidade",value="1 - Luck / Haste"},
+{label="2 - Tempestade / Peso",value="2 - Storm / Weight"},
+{label="3 - Fortuna / Detonação",value="3 - Fortune / Detonation"},
+{label="4 - Preservação / Calor",value="4 - Preservation / Warmth"},
+{label="5 - Escavador / Colosso",value="5 - Excavator / Colossus"},
+}
+local DIRS={
+{label="Baixo",value="Down"},{label="Automático",value="Auto"},
+{label="Cima",value="Up"},{label="Esquerda",value="Left"},
+{label="Direita",value="Right"},{label="Frente",value="Front"},
+{label="Trás",value="Back"},
+}
+local HOP_MODES={{label="Público",value="Public"},{label="Servidor com menos jogadores",value="Lowest Server"}}
+local PRIORITY={
+{label="Maior valor",value="Most Cost"},
+{label="Maior peso",value="Most Weight"},
+{label="Maior sorte",value="Most Luck"},
+{label="Todos / Qualquer",value="All / Any"},
+}
+local PICK_MODES={{label="Sequência",value="Sequence"},{label="Melhor picareta",value="Best Pickaxe"}}
+local DROP_MODES={{label="Ultra rápido",value="Ultra Fast"},{label="Rápido",value="Fast"}}
+local DROP_TYPES={{label="Cristais",value="Crystals"},{label="Runas",value="Runes"}}
+local page=UIState.pages["Main"]
+local g=groupbox(page,"Dupe do jogador")
+addToggle(g,"PlayerDupeNuker","Player Dupe Nuker",false)
+addKey(g,"PlayerDupeNukerKey","Atalho","None")
+addToggle(g,"DupeSwing","Animação da picareta",true)
+addToggle(g,"DupeZnVis","Mostrar zonas de escavação",false)
+addDescription(g,"Recurso Premium no original. O controle visual foi preservado; o binding ainda será conectado pelo mapeamento.")
+g=groupbox(page,"Informações")
+addLabel(g,'<font color="#9AA3B2">Tempo ativo:</font> <font color="#FFFFFF">0h 0m 0s</font>',true)
+addLabel(g,'<font color="#9AA3B2">Dinheiro:</font> <font color="#3CFF5A">$0</font> <font color="#9AA3B2">Ganho:</font> <font color="#3CFF5A">$0</font>',true)
+addLabel(g,'<font color="#9AA3B2">Taxa:</font> <font color="#FFC400">-</font>',true)
+addLabel(g,'<font color="#9AA3B2">Mochila:</font> <font color="#FFFFFF">0.0 / 0.0 kg</font>',true)
+addLabel(g,'<font color="#9AA3B2">Vendas:</font> <font color="#FFFFFF">0</font>  <font color="#9AA3B2">Picaretas:</font> <font color="#FFFFFF">0</font>',true)
+addLabel(g,'<font color="#9AA3B2">Mortes:</font> <font color="#FFFFFF">0 (0 revives)</font>',true)
+addLabel(g,'<font color="#9AA3B2">Rastreando:</font> <font color="#00E5FF">0</font>  <font color="#9AA3B2">Exibidos:</font> <font color="#00E5FF">0</font>',true)
+addLabel(g,'<font color="#9AA3B2">Bombas:</font> <font color="#3CFF5A">0</font>  <font color="#9AA3B2">Radares:</font> <font color="#FFC400">0</font>',true)
+addLabel(g,'<font color="#9AA3B2">Montanha:</font> <font color="#B4BCC8">-</font>',true)
+g=groupbox(page,"Visuais dos radares")
+addDescription(g,"Desenha os overlays dos radares sem precisar possuir ou ativar o radar.")
+addDropdown(g,"RadarVisuals","Radares visuais ativos",{
+{label="Veia Prismática",value="Prismatic Vein"},
+{label="Radar de Cristal",value="Crystal Radar"},
+{label="Radar de Caverna",value="Cave Radar"},
+{label="Radar de Lava",value="Lava Radar"},
+{label="Radar de Veias de Bomba",value="Bombveins Radar"},
+{label="Radar de Aetherstone",value="Aetherstone Radar"},
+{label="Radar de Boulder",value="Boulder Radar"},
+},{},true)
+addSlider(g,"RadarMarkerDistance","Distância dos marcadores",50,3000,250," studs")
+addSlider(g,"RadarMarkerCap","Máximo de marcadores de cristal",1,400,40,"")
+addSlider(g,"RadarMarkerScale","Tamanho dos marcadores",25,400,100,"%")
+g=groupbox(page,"Guia")
+addButton(g,"Assistir guia de Dupe no YouTube")
+g=groupbox(page,"Duper de Cristais")
+addToggle(g,"M2NetLoad","Carga de rede (Lag)",false)
+addButton(g,"Lag → Soltar tudo")
+addDropdown(g,"M2DropMode","Modo de soltura",DROP_MODES,"Ultra Fast",false)
+addDropdown(g,"M2DropTypes","Tipos a soltar",DROP_TYPES,{"Crystals","Runes"},true)
+addInput(g,"M2CrysLim","Limite de cristais (0 = todos)","0")
+addInput(g,"M2RuneLim","Limite de runas (0 = todas)","0")
+addDropdown(g,"M2RuneFlt","Filtro de runas (nenhuma = todas)",{}, {}, true)
+addButton(g,"Atualizar lista de runas")
+addToggle(g,"M2PkCrys","Coletar cristais automaticamente",false)
+addToggle(g,"M2PkRunes","Coletar runas automaticamente",false)
+addToggle(g,"M2PkPlotRn","Coletar runas do terreno automaticamente",false)
+addToggle(g,"M2InstPk","Coleta instantânea global",false)
+addButton(g,"Coletar todos os cristais")
+addLabel(g,"Cristais no inventário: 0")
+addLabel(g,"Runas no inventário: 0")
+addLabel(g,"Cristais soltos próximos: 0")
+addLabel(g,"Runas soltas próximas: 0")
+addLabel(g,"Luck de drop (Val): 0")
+addLabel(g,"Ping: 0 ms")
+addLabel(g,"FPS: 0")
+page=UIState.pages["Crystals"]
+g=groupbox(page,"Coleta")
+addToggle(g,"AutoPickup","Coleta automática",false)
+addKey(g,"AutoPickupKey","Atalho","None")
+addDropdown(g,"PickupRarityBlacklist","Lista negra de raridade",RARITIES,{},true)
+addDropdown(g,"PkMutFlt","Filtro de mutações",MUTATIONS,{},true)
+addSlider(g,"PkBatch","Quantidade por lote",1,60,12,"")
+addSlider(g,"PkDelay","Intervalo entre lotes",0,400,120," ms")
+addToggle(g,"PkIgnFull","Ignorar mochila cheia",false)
+addToggle(g,"InstantPrompt","Interação instantânea",false)
+addToggle(g,"InstantPlotTake","Coleta instantânea no terreno",false)
+g=groupbox(page,"ESP de Cristais")
+addToggle(g,"CrystalEsp","ESP de Cristais",false)
+addKey(g,"CrystalEspKey","Atalho","None")
+addSlider(g,"EspSize","Tamanho do ESP",25,250,70,"%")
+addSlider(g,"CrystalEspDistance","Distância do ESP",50,5000,500," studs")
+addSlider(g,"EspDtlLim","Quantidade com detalhes completos",1,200,40,"")
+addToggle(g,"CrysIcn","Ícone do cristal",true)
+addToggle(g,"CrystalHighlight","Destaque",true)
+addSlider(g,"EspHlLim","Quantidade de destaques",1,31,25,"")
+addSlider(g,"CrystalHighlightTransparency","Transparência do destaque",0,100,65,"%")
+addInput(g,"EspMinValue","Valor mínimo","2m")
+addInput(g,"EspMinLuck","Luck mínimo %","0")
+addDropdown(g,"PkSzFlt","Tamanho mínimo / filtro de tamanho",SIZES,{},true)
+addLabel(g,"Rastreando: 0 | Exibidos: 0")
+g=groupbox(page,"Favoritar automaticamente")
+addToggle(g,"AutoFavorite","Auto Favorite",false)
+addInput(g,"AutoFavoriteLuck","Luck mínimo","0")
+addInput(g,"AutoFavoriteValue","Valor mínimo","0")
+addToggle(g,"AutoFavRarity","Favoritar por raridade",false)
+addDropdown(g,"FavRaritySelect","Filtro de raridade",RARITIES,{},true)
+addButton(g,"Favoritar todos")
+addButton(g,"Desfavoritar todos")
