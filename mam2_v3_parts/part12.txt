@@ -1,0 +1,77 @@
+
+-- MAM2_AUDITED_RECOVERED_BINDINGS_V2
+-- Funções recuperáveis sem inventar remotes do jogo.
+local PG=LP and LP:FindFirstChildOfClass("PlayerGui")
+S.AuditV2=S.AuditV2 or {notify=true,notifyTime=5,playerScale=.6,crystal={size=70,dist=500,detail=40,highlights=25,trans=.65,minValue=2000000,minLuck=0,icon=true,hl=true},runeTiers={[1]=true,[2]=true,[3]=true,[4]=true,[5]=true},lava=false,lavaOld=setmetatable({},{__mode="k"}),hiddenCore={}}
+local A=S.AuditV2
+local function num(v)local n=tonumber(v);if n then return n end;local s=tostring(v or""):lower():gsub("%s+","");local a,b=s:match("([%d%.]+)([kmbq]?)");a=tonumber(a)or 0;return a*(({k=1e3,m=1e6,b=1e9,q=1e12})[b]or 1)end
+local function setof(v)local o={};if type(v)=="string"then o[v]=true elseif type(v)=="table"then for k,x in pairs(v)do if x==true then o[tostring(k)]=true elseif type(k)=="number"then o[tostring(x)]=true end end end;return o end
+local oldNotifyA=notify
+notify=function(t,d)if A.notify==false then return end;return oldNotifyA(t,d or A.notifyTime)end
+KNOWN_TOGGLES.NotificationsManager_Enabled=function(v)A.notify=v~=false end
+KNOWN_OPTIONS.NotificationsManager_Duration=function(v)A.notifyTime=math.clamp(tonumber(v)or 5,1,15)end
+A.notify=UIState.values.NotificationsManager_Enabled~=false;A.notifyTime=tonumber(UIState.values.NotificationsManager_Duration)or 5
+
+-- Menu/layout/atalhos.
+local scale=main:FindFirstChild("__MAM2_AuditScale")or Instance.new("UIScale");scale.Name="__MAM2_AuditScale";scale.Scale=1;scale.Parent=main
+KNOWN_TOGGLES.lock_ui=function(v)UIState.dragLocked=v==true;UIState.values.lock_ui=UIState.dragLocked;pcall(function()lockButton.Image=UIState.dragLocked and"rbxassetid://119765975153029"or"rbxassetid://110263656507369"end)end
+KNOWN_OPTIONS.scrollbar_width=function(v)local n=math.clamp(math.floor((tonumber(v)or 4)+.5),0,12);for _,x in ipairs(gui:GetDescendants())do if x:IsA("ScrollingFrame")then x.ScrollBarThickness=n end end end
+KNOWN_OPTIONS.ThemeManager_UIScale=function(v)scale.Scale=math.clamp(tonumber(v)or 100,75,150)/100 end
+track(UIS.InputBegan:Connect(function(i,p)if p or UIS:GetFocusedTextBox()or i.UserInputType~=Enum.UserInputType.Keyboard then return end;if i.KeyCode.Name==tostring(UIState.values.MenuKeybind or"X")then setMenuVisible(not UIState.menuVisible)end end))
+local KB={AutoPickupKey="AutoPickup",CrystalEspKey="CrystalEsp",misc_walkspeed_key="misc_walkspeed_enabled",misc_sprint_key="misc_sprint",misc_jump_power_key="misc_jump_power_enabled",misc_infinity_jump_key="misc_infinity_jump",misc_noclip_key="misc_noclip",misc_fly_key="misc_fly",misc_fullbright_key="misc_fullbright",misc_nofog_key="misc_nofog",misc_unlock_zoom_key="misc_unlock_zoom",BlkScrnKey="misc_blkscrn"}
+track(UIS.InputBegan:Connect(function(i,p)if p or UIS:GetFocusedTextBox()or i.UserInputType~=Enum.UserInputType.Keyboard then return end;for kid,tid in pairs(KB)do if tostring(UIState.values[kid]or"None")==i.KeyCode.Name then local c=UIState.controls[tid];if c and c.Set then c.Set(not(UIState.values[tid]==true))end end end end))
+
+-- Tamanho do ESP de jogadores.
+KNOWN_OPTIONS.PlayerEspSize=function(v)A.playerScale=math.clamp((tonumber(v)or 60)/100,.25,2.5)end;A.playerScale=math.clamp((tonumber(UIState.values.PlayerEspSize)or 60)/100,.25,2.5)
+track(RunService.Heartbeat:Connect(function()if S.Destroyed or not S.PlayerESP then return end;for _,e in pairs(S.PlayerEsp)do if type(e)=="table"and e.label and e.label.Parent then e.label.TextSize=math.clamp(math.floor(13*A.playerScale+.5),8,32);if e.gui and e.gui.Parent then e.gui.Size=UDim2.fromOffset(math.floor(190*A.playerScale),math.floor(40*A.playerScale))end end end end))
+
+-- Crystal ESP: todos os controles já observados passam a afetar o ESP existente.
+local C=A.crystal
+local function ca(x,n)local v=getAttr(x,n);if v==nil and x and x.Parent then v=getAttr(x.Parent,n)end;return v end
+local function cv(x)return tonumber(ca(x,"Value"))or num(ca(x,"Value"))end
+local function cl(x)local v=tonumber(ca(x,"LuckBoost"))or 0;if math.abs(v)<=1 then v=v*100 end;return v end
+KNOWN_TOGGLES.CrystalEsp=function(v)S.UniverseESP=v==true;if not v then clearMap(S.UniverseEsp)end end
+KNOWN_TOGGLES.CrysIcn=function(v)C.icon=v==true end
+KNOWN_TOGGLES.CrystalHighlight=function(v)C.hl=v==true end
+KNOWN_OPTIONS.EspSize=function(v)C.size=math.clamp(tonumber(v)or 70,25,250)end
+KNOWN_OPTIONS.CrystalEspDistance=function(v)C.dist=math.clamp(tonumber(v)or 500,50,5000);S.UniverseEspRange=C.dist end
+KNOWN_OPTIONS.EspDtlLim=function(v)C.detail=math.max(1,math.floor(tonumber(v)or 40))end
+KNOWN_OPTIONS.EspHlLim=function(v)C.highlights=math.max(0,math.floor(tonumber(v)or 25))end
+KNOWN_OPTIONS.CrystalHighlightTransparency=function(v)C.trans=math.clamp((tonumber(v)or 65)/100,0,1)end
+KNOWN_OPTIONS.EspMinValue=function(v)C.minValue=math.max(0,num(v))end
+KNOWN_OPTIONS.EspMinLuck=function(v)C.minLuck=math.max(0,num(v))end
+C.size=tonumber(UIState.values.EspSize)or 70;C.dist=tonumber(UIState.values.CrystalEspDistance)or 500;C.detail=tonumber(UIState.values.EspDtlLim)or 40;C.highlights=tonumber(UIState.values.EspHlLim)or 25;C.trans=(tonumber(UIState.values.CrystalHighlightTransparency)or 65)/100;C.minValue=num(UIState.values.EspMinValue or"2m");C.minLuck=num(UIState.values.EspMinLuck or"0");C.icon=UIState.values.CrysIcn~=false;C.hl=UIState.values.CrystalHighlight~=false;S.UniverseEspRange=C.dist
+track(RunService.Heartbeat:Connect(function()if S.Destroyed or not S.UniverseESP then return end;local r=root();if not r then return end;local list={};for x,e in pairs(S.UniverseEsp)do if x and x.Parent and type(e)=="table"then list[#list+1]={x=x,e=e,d=(r.Position-x.Position).Magnitude,v=cv(x),l=cl(x)}end end;table.sort(list,function(a,b)if a.v~=b.v then return a.v>b.v end;if a.l~=b.l then return a.l>b.l end;return a.d<b.d end);for i,q in ipairs(list)do local pass=q.d<=C.dist and q.v>=C.minValue and q.l>=C.minLuck;local show=pass and i<=C.detail;local hi=pass and C.hl and i<=C.highlights;if q.e.gui then q.e.gui.Enabled=show end;if q.e.highlight then q.e.highlight.Enabled=hi;q.e.highlight.FillTransparency=C.trans end;if q.e.label then q.e.label.TextSize=math.clamp(math.floor(13*(C.size/70)+.5),8,34);if show then local n,m=crystalTitle(q.x);q.e.label.Text=(C.icon and"◆ "or"")..n.."\n"..m..string.format("  •  %.0fm",q.d)end end end end))
+
+-- Rune ESP: raio 5000 e os cinco grupos de raridade já recuperados.
+S.RuneEspRange=5000
+local oldRuneA=isRune
+local RT={luck=1,haste=1,storm=2,weight=2,fortune=3,detonation=3,preservation=4,warmth=4,excavator=5,colossus=5}
+local function rTier(p)local s=string.lower(tostring(p and p.Name or""));if p and p.Parent then s=s.." "..string.lower(p.Parent.Name)end;for n,t in pairs(RT)do if s:find(n,1,true)then return t end end;return tonumber(getAttr(p,"Tier"))or tonumber(p and p.Parent and getAttr(p.Parent,"Tier"))end
+local function setRuneFilter(v)local z=setof(v);if next(z)==nil then for i=1,5 do A.runeTiers[i]=true end;return end;for i=1,5 do A.runeTiers[i]=false end;for x in pairs(z)do local n=tonumber(x:match("^(%d)"));if n then A.runeTiers[n]=true end end end
+isRune=function(p)if not oldRuneA(p)then return false end;local t=rTier(p);return not t or A.runeTiers[t]==true end
+KNOWN_OPTIONS.RuneEspMinRarity=setRuneFilter;setRuneFilter(UIState.values.RuneEspMinRarity)
+track(RunService.Heartbeat:Connect(function()if not S.RuneTracers then return end;local c=UIState.values.RuneTrcClr;if typeof(c)~="Color3"then c=Color3.fromRGB(0,224,255)end;for _,e in pairs(S.RuneTracersMap)do if e.beam and e.beam.Parent then e.beam.Color=ColorSequence.new(c)end end end))
+
+-- Ocultar elementos nativos do Roblox.
+local CT={Chat=Enum.CoreGuiType.Chat,["Player List"]=Enum.CoreGuiType.PlayerList,Backpack=Enum.CoreGuiType.Backpack,Emotes=Enum.CoreGuiType.EmotesMenu}
+local function hideCore(v)local z=setof(v);for n,e in pairs(CT)do local h=z[n]==true;pcall(function()StarterGui:SetCoreGuiEnabled(e,not h)end);A.hiddenCore[n]=h end end
+KNOWN_OPTIONS.misc_hide_core=hideCore
+
+-- LavaHazard local e reversível.
+local function lavaObj(o)local p=o;for _=1,5 do if not p then break end;local n=p.Name:lower();if n:find("lavahazard",1,true)or n=="lava hazard"then return true end;p=p.Parent end;return false end
+local function setLava(v)A.lava=v==true;if A.lava then for _,o in ipairs(Workspace:GetDescendants())do if o:IsA("BasePart")and lavaObj(o)then A.lavaOld[o]=A.lavaOld[o]or{o.CanTouch,o.CanQuery,o.CanCollide};o.CanTouch=false;o.CanQuery=false;o.CanCollide=false end end else for o,x in pairs(A.lavaOld)do if o.Parent then pcall(function()o.CanTouch=x[1];o.CanQuery=x[2];o.CanCollide=x[3]end)end;A.lavaOld[o]=nil end end end
+KNOWN_TOGGLES.misc_remove_lava_hazard=setLava
+track(Workspace.DescendantAdded:Connect(function(o)if A.lava and o:IsA("BasePart")and lavaObj(o)then task.defer(function()if o.Parent then A.lavaOld[o]=A.lavaOld[o]or{o.CanTouch,o.CanQuery,o.CanCollide};o.CanTouch=false;o.CanQuery=false;o.CanCollide=false end end)end end))
+
+-- Auto Close Popups: textos explicitamente listados no menu original.
+local PH={"finish mining","termine de minerar","too big","muito grande","backpack full","mochila cheia"}
+local function closePop(o)if not A.autoPop or not(o:IsA("TextLabel")or o:IsA("TextButton"))then return end;local t=o.Text:lower();local hit=false;for _,q in ipairs(PH)do if t:find(q,1,true)then hit=true;break end end;if not hit then return end;local p,b=o.Parent,nil;for _=1,5 do if not p or p:IsA("ScreenGui")then break end;if p:IsA("Frame")or p:IsA("CanvasGroup")then b=p end;p=p.Parent end;if b then b.Visible=false end end
+KNOWN_TOGGLES.misc_auto_close_popups=function(v)A.autoPop=v==true;if A.autoPop and PG then for _,o in ipairs(PG:GetDescendants())do closePop(o)end end end
+if PG then track(PG.DescendantAdded:Connect(function(o)if o:IsA("TextLabel")or o:IsA("TextButton")then task.defer(function()if o.Parent then closePop(o)end end)end end))end
+
+-- Cleanup complementar.
+local oldDestroyA=S.Destroy
+S.Destroy=function()A.autoPop=false;setLava(false);for n,h in pairs(A.hiddenCore)do if h and CT[n]then pcall(function()StarterGui:SetCoreGuiEnabled(CT[n],true)end)end end;if oldDestroyA then return oldDestroyA()end end
+
+task.defer(function()pcall(function()KNOWN_TOGGLES.lock_ui(UIState.values.lock_ui==true)end);pcall(function()KNOWN_OPTIONS.scrollbar_width(UIState.values.scrollbar_width or 4)end);pcall(function()hideCore(UIState.values.misc_hide_core)end)end)
