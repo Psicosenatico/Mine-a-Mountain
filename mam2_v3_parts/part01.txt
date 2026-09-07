@@ -1,0 +1,343 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local PPS = game:GetService("ProximityPromptService")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+local StarterGui = game:GetService("StarterGui")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local TweenService = game:GetService("TweenService")
+local LP = Players.LocalPlayer
+local ENV = (getgenv and getgenv()) or _G
+if ENV.__MAM2_STANDALONE_V2 and ENV.__MAM2_STANDALONE_V2.Destroy then
+pcall(ENV.__MAM2_STANDALONE_V2.Destroy)
+end
+local S = {
+Destroyed = false,
+MenuVisible = true,
+GodMode = false,
+NoRagdoll = false,
+NoFallDamage = false,
+NoCameraShake = false,
+AutoPickup = false,
+InstantPrompt = false,
+PlayerESP = false,
+UniverseESP = false,
+RuneESP = false,
+RuneTracers = false,
+TransparentTextures = false,
+TextureTransparency = 0.86,
+DisableCrystalsGlow = false,
+OptimizeCrystals = false,
+AutoPickupRange = 28,
+UniverseEspRange = 650,
+RuneEspRange = 850,
+LastSafeHealth = nil,
+Cons = {},
+PromptDurations = setmetatable({}, {__mode="k"}),
+PlayerEsp = {},
+UniverseEsp = {},
+RuneEsp = {},
+RuneTracersMap = {},
+TextureChanged = setmetatable({}, {__mode="k"}),
+GlowChanged = setmetatable({}, {__mode="k"}),
+}
+ENV.__MAM2_STANDALONE_V2 = S
+local function track(c)
+S.Cons[#S.Cons + 1] = c
+return c
+end
+local function notify(text, duration)
+pcall(function()
+StarterGui:SetCore("SendNotification", {
+Title = "Mine a Mountain 2",
+Text = tostring(text),
+Duration = duration or 4,
+})
+end)
+end
+local function char()
+return LP and LP.Character
+end
+local function hum()
+local c = char()
+return c and c:FindFirstChildOfClass("Humanoid")
+end
+local function root()
+local c = char()
+return c and c:FindFirstChild("HumanoidRootPart")
+end
+local function getAttr(inst, name)
+if not inst then return nil end
+local ok, v = pcall(inst.GetAttribute, inst, name)
+return ok and v or nil
+end
+local function crystalPart(p)
+if not p or not p:IsA("BasePart") then return nil end
+local function valid(x)
+if not x or not x:IsA("BasePart") then return false end
+local value = getAttr(x, "Value")
+if value == nil and x.Parent then value = getAttr(x.Parent, "Value") end
+if value == nil then return false end
+local cn = getAttr(x, "CrystalName")
+if cn == nil and x.Parent then cn = getAttr(x.Parent, "CrystalName") end
+return cn ~= nil or x.Name:find("Crystal", 1, true) ~= nil
+end
+if valid(p) then return p end
+local m = p.Parent
+if m and m:IsA("Model") then
+for _, d in ipairs(m:GetDescendants()) do
+if d:IsA("BasePart") and valid(d) then return d end
+end
+end
+end
+local function isRune(p)
+if not p or not p:IsA("BasePart") then return false end
+if p.Name:lower():find("rune", 1, true) then return true end
+if p.Parent and p.Parent.Name:lower():find("rune", 1, true) then return true end
+return getAttr(p, "TierName") ~= nil and getAttr(p, "LuckBoost") ~= nil
+end
+local function promptOf(inst)
+if not inst then return nil end
+return inst:FindFirstChildWhichIsA("ProximityPrompt", true)
+or (inst.Parent and inst.Parent:FindFirstChildWhichIsA("ProximityPrompt", true))
+end
+local function clickOf(inst)
+if not inst then return nil end
+return inst:FindFirstChildWhichIsA("ClickDetector", true)
+or (inst.Parent and inst.Parent:FindFirstChildWhichIsA("ClickDetector", true))
+end
+local function grabCrystalLocal(inst)
+local p = promptOf(inst)
+if p and type(fireproximityprompt) == "function" then
+local ok = pcall(fireproximityprompt, p)
+if ok then return true end
+end
+local c = clickOf(inst)
+if c and type(fireclickdetector) == "function" then
+local ok = pcall(fireclickdetector, c, 0)
+if ok then return true end
+end
+return false
+end
+local function playerSafety()
+if S.Destroyed then return end
+local c, h, r = char(), hum(), root()
+if not c or not h or not r then return end
+if S.GodMode and h.Health > 0 and h.Health < h.MaxHealth then
+h.Health = h.MaxHealth
+end
+local ragged =
+(h.RequiresNeck == false and h.PlatformStand == true)
+or c:GetAttribute("Ragdolled") == true
+if S.NoRagdoll and ragged and h.Health > 0 then
+pcall(function()
+h.PlatformStand = false
+h.RequiresNeck = true
+h:ChangeState(Enum.HumanoidStateType.GettingUp)
+if h.WalkSpeed <= 0 then h.WalkSpeed = 16 end
+if h.JumpPower <= 0 then h.JumpPower = 50 end
+end)
+end
+if S.NoFallDamage then
+pcall(function()
+if LP:GetAttribute("NoFallDamage") ~= true then
+LP:SetAttribute("NoFallDamage", true)
+end
+end)
+if h.FloorMaterial == Enum.Material.Air then
+local v = r.AssemblyLinearVelocity
+if v.Y < -70 then
+r.AssemblyLinearVelocity = Vector3.new(v.X, -70, v.Z)
+end
+end
+if not ragged then
+S.LastSafeHealth = h.Health
+elseif S.LastSafeHealth and h.Health > 0 and h.Health < S.LastSafeHealth then
+h.Health = math.min(S.LastSafeHealth, h.MaxHealth)
+end
+else
+S.LastSafeHealth = nil
+pcall(function() LP:SetAttribute("NoFallDamage", nil) end)
+end
+if S.NoCameraShake then
+pcall(function()
+h.CameraOffset = Vector3.zero
+end)
+end
+end
+track(RunService.Heartbeat:Connect(playerSafety))
+local pickupClock = 0
+track(RunService.Heartbeat:Connect(function(dt)
+if S.Destroyed or not S.AutoPickup then return end
+pickupClock += dt
+if pickupClock < 0.12 then return end
+pickupClock = 0
+local r = root()
+if not r then return end
+local op = OverlapParams.new()
+op.FilterType = Enum.RaycastFilterType.Exclude
+op.FilterDescendantsInstances = {char()}
+local ok, parts = pcall(
+Workspace.GetPartBoundsInRadius,
+Workspace,
+r.Position,
+S.AutoPickupRange,
+op
+)
+if not ok or type(parts) ~= "table" then return end
+local seen, grabbed = {}, 0
+for _, p in ipairs(parts) do
+if grabbed >= 4 then break end
+local x = crystalPart(p)
+if x and not seen[x] then
+seen[x] = true
+local collected = getAttr(x, "Collected")
+or (x.Parent and getAttr(x.Parent, "Collected"))
+if collected ~= true and grabCrystalLocal(x) then
+grabbed += 1
+end
+end
+end
+end))
+local function setInstantPrompt(v)
+S.InstantPrompt = v
+if v then
+for _, x in ipairs(Workspace:GetDescendants()) do
+if x:IsA("ProximityPrompt") then
+if S.PromptDurations[x] == nil then
+S.PromptDurations[x] = x.HoldDuration
+end
+x.HoldDuration = 0
+end
+end
+else
+for p, d in pairs(S.PromptDurations) do
+if p and p.Parent then
+pcall(function() p.HoldDuration = d end)
+end
+end
+end
+end
+track(PPS.PromptShown:Connect(function(p)
+if S.InstantPrompt then
+if S.PromptDurations[p] == nil then
+S.PromptDurations[p] = p.HoldDuration
+end
+p.HoldDuration = 0
+end
+end))
+local crystalLightClasses = {
+PointLight = true,
+SpotLight = true,
+SurfaceLight = true,
+}
+local function applyTransparent(inst)
+if inst:IsA("BasePart") then
+for _, p in ipairs(Players:GetPlayers()) do
+if p.Character and inst:IsDescendantOf(p.Character) then return end
+end
+if inst.Transparency >= 0.9 then return end
+elseif not inst:IsA("Decal") and not inst:IsA("Texture") then
+return
+end
+if S.TextureChanged[inst] == nil then
+S.TextureChanged[inst] = inst.Transparency
+pcall(function()
+if inst:GetAttribute("XgrsOrigTransparency") == nil then
+inst:SetAttribute("XgrsOrigTransparency", inst.Transparency)
+end
+end)
+end
+inst.Transparency = S.TextureTransparency
+end
+local function restoreTransparent()
+for inst, old in pairs(S.TextureChanged) do
+if inst and inst.Parent then
+pcall(function() inst.Transparency = old end)
+end
+S.TextureChanged[inst] = nil
+end
+end
+local function applyGlowOff(part)
+if not part or not part:IsA("BasePart") then return end
+if S.GlowChanged[part] == nil then
+S.GlowChanged[part] = {
+Material = part.Material,
+CastShadow = part.CastShadow,
+}
+end
+pcall(function()
+if part:GetAttribute("XgrsOrigMaterial") == nil then
+part:SetAttribute("XgrsOrigMaterial", part.Material.Name)
+end
+if part.Material == Enum.Material.Neon then
+part.Material = Enum.Material.SmoothPlastic
+end
+part.CastShadow = false
+end)
+for _, x in ipairs(part:GetChildren()) do
+if crystalLightClasses[x.ClassName] then
+local rec = S.GlowChanged[x]
+if rec == nil then
+rec = {Enabled = x.Enabled}
+S.GlowChanged[x] = rec
+end
+pcall(function()
+if x:GetAttribute("XgrsOrigLightEnabled") == nil then
+x:SetAttribute("XgrsOrigLightEnabled", x.Enabled)
+end
+x.Enabled = false
+end)
+elseif x:IsA("ParticleEmitter")
+or x:IsA("Sparkles")
+or x:IsA("Fire")
+or x:IsA("Smoke")
+or x:IsA("Beam")
+or x:IsA("Trail") then
+if S.GlowChanged[x] == nil then
+S.GlowChanged[x] = {Enabled = x.Enabled}
+end
+x.Enabled = false
+end
+end
+end
+local function restoreGlow()
+for inst, rec in pairs(S.GlowChanged) do
+if inst and inst.Parent and type(rec) == "table" then
+pcall(function()
+if rec.Material ~= nil then inst.Material = rec.Material end
+if rec.CastShadow ~= nil then inst.CastShadow = rec.CastShadow end
+if rec.Enabled ~= nil then inst.Enabled = rec.Enabled end
+end)
+end
+S.GlowChanged[inst] = nil
+end
+end
+local function applyWorldVisualSettings(inst)
+if S.TransparentTextures
+and (inst:IsA("BasePart") or inst:IsA("Decal") or inst:IsA("Texture")) then
+pcall(applyTransparent, inst)
+end
+if inst:IsA("BasePart") then
+local crystal = crystalPart(inst)
+if crystal then
+if S.DisableCrystalsGlow or S.OptimizeCrystals then
+pcall(applyGlowOff, crystal)
+if crystal.Parent and crystal.Parent:IsA("Model") then
+for _, d in ipairs(crystal.Parent:GetDescendants()) do
+if d:IsA("BasePart") then pcall(applyGlowOff, d) end
+end
+end
+end
+end
+end
+end
+track(Workspace.DescendantAdded:Connect(function(inst)
+if S.TransparentTextures or S.DisableCrystalsGlow or S.OptimizeCrystals then
+task.defer(applyWorldVisualSettings, inst)
+end
+end))
+local function rescanWorldVisuals()
+task.spawn(function()
