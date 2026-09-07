@@ -1,1 +1,231 @@
+-- Mine a Mountain 2 - Standalone Reconstruction V1
+-- Reconstructed from captured runtime/source evidence.
+-- Pending controls stay visible but intentionally execute no gameplay action.
 
+local Players=game:GetService("Players")
+local RunService=game:GetService("RunService")
+local UIS=game:GetService("UserInputService")
+local PPS=game:GetService("ProximityPromptService")
+local Workspace=game:GetService("Workspace")
+local CoreGui=game:GetService("CoreGui")
+local StarterGui=game:GetService("StarterGui")
+local LP=Players.LocalPlayer
+local ENV=(getgenv and getgenv()) or _G
+
+if ENV.__MAM2_STANDALONE_V1 and ENV.__MAM2_STANDALONE_V1.Destroy then pcall(ENV.__MAM2_STANDALONE_V1.Destroy) end
+
+local S={
+ Destroyed=false,GodMode=false,NoRagdoll=false,NoFallDamage=false,AutoPickup=false,InstantPrompt=false,
+ PlayerESP=false,CrystalESP=false,RuneESP=false,AutoPickupRange=28,CrystalESPRange=450,RuneESPRange=800,
+ LastSafeHealth=nil,Cons={},PlayerEsp={},CrystalEsp={},RuneEsp={},PromptDurations={}
+}
+ENV.__MAM2_STANDALONE_V1=S
+
+local function track(c) S.Cons[#S.Cons+1]=c return c end
+local function notify(t,d)
+ d=d or 3
+ pcall(function() StarterGui:SetCore("SendNotification",{Title="MAM2 Standalone",Text=tostring(t),Duration=d}) end)
+end
+local function char() return LP and LP.Character end
+local function hum() local c=char() return c and c:FindFirstChildOfClass("Humanoid") end
+local function root() local c=char() return c and c:FindFirstChild("HumanoidRootPart") end
+
+local function isCrystal(p)
+ if not p or not p:IsA("BasePart") then return false end
+ local v=p:GetAttribute("Value") or (p.Parent and p.Parent:GetAttribute("Value"))
+ if v==nil then return false end
+ local n=p:GetAttribute("CrystalName") or (p.Parent and p.Parent:GetAttribute("CrystalName"))
+ return n~=nil or p.Name:lower():find("crystal",1,true)~=nil
+end
+local function crystalPart(p)
+ if isCrystal(p) then return p end
+ local m=p and p.Parent
+ if m and m:IsA("Model") then for _,d in ipairs(m:GetDescendants()) do if d:IsA("BasePart") and isCrystal(d) then return d end end end
+end
+local function isRune(p)
+ if not p or not p:IsA("BasePart") then return false end
+ if p.Name:lower():find("rune",1,true) then return true end
+ if p.Parent and p.Parent.Name:lower():find("rune",1,true) then return true end
+ return p:GetAttribute("TierName")~=nil and p:GetAttribute("LuckBoost")~=nil
+end
+local function promptOf(x)
+ if not x then return end
+ return x:FindFirstChildWhichIsA("ProximityPrompt",true) or (x.Parent and x.Parent:FindFirstChildWhichIsA("ProximityPrompt",true))
+end
+local function clickOf(x)
+ if not x then return end
+ return x:FindFirstChildWhichIsA("ClickDetector",true) or (x.Parent and x.Parent:FindFirstChildWhichIsA("ClickDetector",true))
+end
+local function grabLocal(x)
+ local p=promptOf(x)
+ if p and type(fireproximityprompt)=="function" then local ok=pcall(fireproximityprompt,p) if ok then return true end end
+ local c=clickOf(x)
+ if c and type(fireclickdetector)=="function" then local ok=pcall(fireclickdetector,c) if ok then return true end end
+ return false
+end
+
+-- Confirmed/partially reconstructed player protection.
+local function safety()
+ if S.Destroyed then return end
+ local c,h,r=char(),hum(),root(); if not c or not h or not r then return end
+ if S.GodMode and h.Health>0 and h.Health<h.MaxHealth then h.Health=h.MaxHealth end
+ local rag=(h.RequiresNeck==false and h.PlatformStand==true) or c:GetAttribute("Ragdolled")==true
+ if S.NoRagdoll and rag and h.Health>0 then
+  pcall(function() h.PlatformStand=false;h.WalkSpeed=16;h.JumpPower=50;h.RequiresNeck=true;h:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+ end
+ if S.NoFallDamage then
+  pcall(function() if LP:GetAttribute("NoFallDamage")~=true then LP:SetAttribute("NoFallDamage",true) end end)
+  if h.FloorMaterial==Enum.Material.Air then local v=r.AssemblyLinearVelocity;if v.Y < -70 then r.AssemblyLinearVelocity=Vector3.new(v.X,-70,v.Z) end end
+  if not rag then S.LastSafeHealth=h.Health elseif S.LastSafeHealth and h.Health>0 and h.Health<S.LastSafeHealth then h.Health=math.min(S.LastSafeHealth,h.MaxHealth) end
+ else
+  S.LastSafeHealth=nil;pcall(function() LP:SetAttribute("NoFallDamage",nil) end)
+ end
+end
+track(RunService.Heartbeat:Connect(safety))
+
+-- Auto Pickup partial reconstruction: confirmed prompt/click paths only.
+local pickClock=0
+track(RunService.Heartbeat:Connect(function(dt)
+ if S.Destroyed or not S.AutoPickup then return end
+ pickClock+=dt;if pickClock<0.12 then return end;pickClock=0
+ local r=root();if not r then return end
+ local op=OverlapParams.new();op.FilterType=Enum.RaycastFilterType.Exclude;op.FilterDescendantsInstances={char()}
+ local ok,parts=pcall(Workspace.GetPartBoundsInRadius,Workspace,r.Position,S.AutoPickupRange,op);if not ok then return end
+ local seen,n={},0
+ for _,p in ipairs(parts) do
+  if n>=4 then break end
+  local x=crystalPart(p)
+  if x and not seen[x] then seen[x]=true
+   local collected=x:GetAttribute("Collected") or (x.Parent and x.Parent:GetAttribute("Collected"))
+   if collected~=true and grabLocal(x) then n+=1 end
+  end
+ end
+end))
+
+local function setInstant(v)
+ S.InstantPrompt=v
+ if v then
+  for _,x in ipairs(Workspace:GetDescendants()) do if x:IsA("ProximityPrompt") then if S.PromptDurations[x]==nil then S.PromptDurations[x]=x.HoldDuration end;x.HoldDuration=0 end end
+ else
+  for p,d in pairs(S.PromptDurations) do if p and p.Parent then pcall(function() p.HoldDuration=d end) end end
+ end
+end
+track(PPS.PromptShown:Connect(function(p) if S.InstantPrompt then if S.PromptDurations[p]==nil then S.PromptDurations[p]=p.HoldDuration end;p.HoldDuration=0 end end))
+
+local function clearMap(m) for k,v in pairs(m) do pcall(function() if v.gui then v.gui:Destroy() else v:Destroy() end end);m[k]=nil end end
+local function billboard(adornee,color)
+ local g=Instance.new("BillboardGui");g.Name="__MAM2_PlayerESP";g.AlwaysOnTop=true;g.Size=UDim2.fromOffset(180,34);g.StudsOffset=Vector3.new(0,2.6,0);g.Adornee=adornee;g.Parent=adornee
+ local l=Instance.new("TextLabel");l.BackgroundTransparency=1;l.Size=UDim2.fromScale(1,1);l.Font=Enum.Font.Code;l.TextSize=14;l.TextStrokeTransparency=0;l.TextColor3=color;l.Parent=g
+ return {gui=g,label=l}
+end
+local function hi(adornee,name,color)
+ local h=Instance.new("Highlight");h.Name=name;h.FillTransparency=.7;h.OutlineTransparency=0;h.FillColor=color;h.OutlineColor=Color3.new(1,1,1);h.Adornee=adornee;h.Parent=CoreGui;return h
+end
+local espClock=0
+track(RunService.Heartbeat:Connect(function(dt)
+ if S.Destroyed then return end;espClock+=dt;if espClock<.35 then return end;espClock=0
+ local r=root()
+ if not S.PlayerESP then clearMap(S.PlayerEsp) else
+  for _,p in ipairs(Players:GetPlayers()) do if p~=LP then
+   local c=p.Character;local pr=c and c:FindFirstChild("HumanoidRootPart");local ph=c and c:FindFirstChildOfClass("Humanoid")
+   if pr and ph and ph.Health>0 then
+    local e=S.PlayerEsp[p];if not e or not e.gui.Parent then e=billboard(pr,Color3.new(1,1,1));S.PlayerEsp[p]=e end
+    local d=r and (r.Position-pr.Position).Magnitude or 0;e.label.Text=string.format("%s\n%.0f studs",p.DisplayName or p.Name,d)
+   elseif S.PlayerEsp[p] then pcall(function() S.PlayerEsp[p].gui:Destroy() end);S.PlayerEsp[p]=nil end
+  end end
+ end
+ if not S.CrystalESP then clearMap(S.CrystalEsp) elseif r then
+  local op=OverlapParams.new();op.FilterType=Enum.RaycastFilterType.Exclude;op.FilterDescendantsInstances={char()}
+  local ok,parts=pcall(Workspace.GetPartBoundsInRadius,Workspace,r.Position,S.CrystalESPRange,op)
+  if ok then local seen={};for _,p in ipairs(parts) do local x=crystalPart(p);if x then seen[x]=true;if not S.CrystalEsp[x] then S.CrystalEsp[x]=hi(x.Parent and x.Parent:IsA("Model") and x.Parent or x,"__MAM2_CrystalHighlight",Color3.fromRGB(0,170,255)) end end end
+   for x,h in pairs(S.CrystalEsp) do if not x.Parent or not seen[x] then pcall(function() h:Destroy() end);S.CrystalEsp[x]=nil end end
+  end
+ end
+ if not S.RuneESP then clearMap(S.RuneEsp) elseif r then
+  local op=OverlapParams.new();op.FilterType=Enum.RaycastFilterType.Exclude;op.FilterDescendantsInstances={char()}
+  local ok,parts=pcall(Workspace.GetPartBoundsInRadius,Workspace,r.Position,S.RuneESPRange,op)
+  if ok then local seen={};for _,p in ipairs(parts) do if isRune(p) then seen[p]=true;if not S.RuneEsp[p] then S.RuneEsp[p]=hi(p.Parent and p.Parent:IsA("Model") and p.Parent or p,"UniverseRuneHighlight",Color3.fromRGB(255,215,80)) end end end
+   for x,h in pairs(S.RuneEsp) do if not x.Parent or not seen[x] then pcall(function() h:Destroy() end);S.RuneEsp[x]=nil end end
+  end
+ end
+end))
+
+-- UI -----------------------------------------------------------------------
+local gui=Instance.new("ScreenGui");gui.Name="MAM2_Standalone_Reconstruction_V1";gui.ResetOnSpawn=false;gui.IgnoreGuiInset=true;gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+local parent=(gethui and gethui()) or CoreGui;gui.Parent=parent
+local function round(o,r)local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,r or 8);c.Parent=o end
+local function stroke(o,col)local s=Instance.new("UIStroke");s.Color=col or Color3.fromRGB(55,75,110);s.Transparency=.2;s.Parent=o end
+local function text(o,t,sz,bold)local l=Instance.new("TextLabel");l.BackgroundTransparency=1;l.Size=UDim2.fromScale(1,1);l.Font=bold and Enum.Font.GothamBold or Enum.Font.Gotham;l.TextSize=sz or 13;l.TextColor3=Color3.fromRGB(238,242,250);l.Text=t;l.Parent=o;return l end
+local main=Instance.new("Frame");main.Size=UDim2.fromOffset(570,390);main.AnchorPoint=Vector2.new(.5,.5);main.Position=UDim2.fromScale(.5,.5);main.BackgroundColor3=Color3.fromRGB(17,20,28);main.BorderSizePixel=0;main.Parent=gui;round(main,11);stroke(main)
+local maxW=math.max(330,Workspace.CurrentCamera.ViewportSize.X-20);local maxH=math.max(270,Workspace.CurrentCamera.ViewportSize.Y-20);main.Size=UDim2.fromOffset(math.min(570,maxW),math.min(390,maxH))
+local header=Instance.new("Frame");header.Size=UDim2.new(1,0,0,44);header.BackgroundColor3=Color3.fromRGB(22,28,40);header.BorderSizePixel=0;header.Active=true;header.Parent=main;round(header,11)
+local fix=Instance.new("Frame");fix.Position=UDim2.new(0,0,1,-10);fix.Size=UDim2.new(1,0,0,10);fix.BackgroundColor3=header.BackgroundColor3;fix.BorderSizePixel=0;fix.Parent=header
+local ht=text(header,"Mine a Mountain 2 | Standalone V1",14,true);ht.TextXAlignment=Enum.TextXAlignment.Left;ht.Position=UDim2.fromOffset(14,0);ht.Size=UDim2.new(1,-70,1,0)
+local close=Instance.new("TextButton");close.AnchorPoint=Vector2.new(1,.5);close.Position=UDim2.new(1,-10,.5,0);close.Size=UDim2.fromOffset(28,28);close.BackgroundColor3=Color3.fromRGB(40,48,65);close.BorderSizePixel=0;close.Text="×";close.TextColor3=Color3.new(1,1,1);close.TextSize=18;close.Font=Enum.Font.GothamBold;close.Parent=header;round(close,7)
+local side=Instance.new("Frame");side.Position=UDim2.fromOffset(8,52);side.Size=UDim2.new(0,130,1,-60);side.BackgroundColor3=Color3.fromRGB(14,17,24);side.BorderSizePixel=0;side.Parent=main;round(side,8)
+local content=Instance.new("Frame");content.Position=UDim2.fromOffset(146,52);content.Size=UDim2.new(1,-154,1,-60);content.BackgroundColor3=Color3.fromRGB(14,17,24);content.BorderSizePixel=0;content.Parent=main;round(content,8)
+local tabs,active={},nil
+local function tab(name,icon)
+ local b=Instance.new("TextButton");b.Size=UDim2.new(1,-10,0,36);b.BackgroundColor3=Color3.fromRGB(28,34,47);b.BorderSizePixel=0;b.Text=(icon and (icon.."  ") or "")..name;b.TextColor3=Color3.fromRGB(220,226,238);b.Font=Enum.Font.GothamSemibold;b.TextSize=12;b.Parent=side;round(b,7)
+ local p=Instance.new("ScrollingFrame");p.Size=UDim2.fromScale(1,1);p.BackgroundTransparency=1;p.BorderSizePixel=0;p.ScrollBarThickness=4;p.AutomaticCanvasSize=Enum.AutomaticSize.Y;p.CanvasSize=UDim2.new();p.Visible=false;p.Parent=content
+ local pad=Instance.new("UIPadding");pad.PaddingTop=UDim.new(0,10);pad.PaddingLeft=UDim.new(0,10);pad.PaddingRight=UDim.new(0,10);pad.PaddingBottom=UDim.new(0,10);pad.Parent=p
+ local list=Instance.new("UIListLayout");list.Padding=UDim.new(0,7);list.SortOrder=Enum.SortOrder.LayoutOrder;list.Parent=p
+ tabs[#tabs+1]={b=b,p=p};b.Activated:Connect(function() for _,t in ipairs(tabs) do t.p.Visible=false;t.b.BackgroundColor3=Color3.fromRGB(28,34,47) end;p.Visible=true;b.BackgroundColor3=Color3.fromRGB(0,85,255);active=p end)
+ return p
+end
+local sl=Instance.new("UIListLayout");sl.Padding=UDim.new(0,6);sl.SortOrder=Enum.SortOrder.LayoutOrder;sl.Parent=side
+local sp=Instance.new("UIPadding");sp.PaddingTop=UDim.new(0,7);sp.PaddingLeft=UDim.new(0,5);sp.PaddingRight=UDim.new(0,5);sp.Parent=side
+local function section(p,t)local f=Instance.new("Frame");f.Size=UDim2.new(1,0,0,26);f.BackgroundColor3=Color3.fromRGB(22,28,40);f.BorderSizePixel=0;f.Parent=p;round(f,6);local l=text(f,t,12,true);l.TextXAlignment=Enum.TextXAlignment.Left;l.Position=UDim2.fromOffset(9,0);l.Size=UDim2.new(1,-18,1,0) end
+local function info(p,t,col)local l=Instance.new("TextLabel");l.Size=UDim2.new(1,0,0,22);l.AutomaticSize=Enum.AutomaticSize.Y;l.BackgroundTransparency=1;l.Font=Enum.Font.Code;l.TextSize=12;l.TextWrapped=true;l.TextXAlignment=Enum.TextXAlignment.Left;l.TextColor3=col or Color3.fromRGB(205,212,225);l.Text=t;l.Parent=p;return l end
+local function toggle(p,label,get,set,status)
+ local b=Instance.new("TextButton");b.Size=UDim2.new(1,0,0,34);b.BackgroundColor3=Color3.fromRGB(25,30,42);b.BorderSizePixel=0;b.Text="";b.Parent=p;round(b,7)
+ local l=text(b,label..(status and ("  ["..status.."]") or ""),12,false);l.TextXAlignment=Enum.TextXAlignment.Left;l.Position=UDim2.fromOffset(10,0);l.Size=UDim2.new(1,-54,1,0)
+ local box=Instance.new("Frame");box.AnchorPoint=Vector2.new(1,.5);box.Position=UDim2.new(1,-10,.5,0);box.Size=UDim2.fromOffset(30,18);box.BackgroundColor3=Color3.fromRGB(50,57,72);box.BorderSizePixel=0;box.Parent=b;round(box,9)
+ local dot=Instance.new("Frame");dot.Size=UDim2.fromOffset(14,14);dot.Position=UDim2.fromOffset(2,2);dot.BackgroundColor3=Color3.fromRGB(220,225,235);dot.BorderSizePixel=0;dot.Parent=box;round(dot,7)
+ local function paint()local v=get();box.BackgroundColor3=v and Color3.fromRGB(0,85,255) or Color3.fromRGB(50,57,72);dot.Position=v and UDim2.fromOffset(14,2) or UDim2.fromOffset(2,2) end;paint()
+ b.Activated:Connect(function() set(not get());paint() end);return paint
+end
+local function pending(p,name)toggle(p,name,function()return false end,function(v)if v then notify(name.." ainda não possui função atribuída. Veja a aba ?.",4)end end,"?")end
+local function button(p,name,fn,status)local b=Instance.new("TextButton");b.Size=UDim2.new(1,0,0,34);b.BackgroundColor3=Color3.fromRGB(25,30,42);b.BorderSizePixel=0;b.Text=name..(status and ("  ["..status.."]") or "");b.TextColor3=Color3.fromRGB(235,240,248);b.Font=Enum.Font.GothamSemibold;b.TextSize=12;b.Parent=p;round(b,7);b.Activated:Connect(fn)end
+
+local farm=tab("Autofarm","⛏");section(farm,"Mining");pending(farm,"Boulder Farm");pending(farm,"Auto Near Collect");pending(farm,"Money Farm / Auto Sell");section(farm,"Collection")
+toggle(farm,"Auto Pickup",function()return S.AutoPickup end,function(v)S.AutoPickup=v;if v and type(fireproximityprompt)~="function" and type(fireclickdetector)~="function" then notify("Executor sem fireproximityprompt/fireclickdetector.",5)end end,"PARCIAL");pending(farm,"Auto Favorite")
+local player=tab("Player","♙");section(player,"Protection")
+toggle(player,"God Mode",function()return S.GodMode end,function(v)S.GodMode=v end)
+toggle(player,"No Ragdoll",function()return S.NoRagdoll end,function(v)S.NoRagdoll=v end,"PARCIAL")
+toggle(player,"No Fall Damage",function()return S.NoFallDamage end,function(v)S.NoFallDamage=v;if not v then pcall(function()LP:SetAttribute("NoFallDamage",nil)end)end end)
+pending(player,"No Camera Shake")
+local vis=tab("Visuals","◉");section(vis,"ESP")
+toggle(vis,"Player ESP",function()return S.PlayerESP end,function(v)S.PlayerESP=v;if not v then clearMap(S.PlayerEsp)end end)
+toggle(vis,"Crystal ESP",function()return S.CrystalESP end,function(v)S.CrystalESP=v;if not v then clearMap(S.CrystalEsp)end end)
+toggle(vis,"Rune ESP",function()return S.RuneESP end,function(v)S.RuneESP=v;if not v then clearMap(S.RuneEsp)end end,"PARCIAL");pending(vis,"Rune Tracers");pending(vis,"Universe ESP")
+local misc=tab("Misc","⚙");section(misc,"Placement");pending(misc,"Auto Place");pending(misc,"Auto Place Best");pending(misc,"Auto Place Runes");pending(misc,"Show Placement Grid");section(misc,"Utility")
+toggle(misc,"Instant Prompt",function()return S.InstantPrompt end,setInstant,"PARCIAL");pending(misc,"Optimize Crystals");pending(misc,"Disable Crystals Glow");pending(misc,"Transparent Textures");button(misc,"Server Hop",function()notify("Server Hop ainda não possui função atribuída.",4)end,"?");button(misc,"Lowest Server",function()notify("Lowest Server ainda não possui função atribuída.",4)end,"?")
+local q=tab("Status","?");section(q,"Status da reconstrução");info(q,"ATRIBUÍDAS / RECONSTRUÍDAS",Color3.fromRGB(110,220,150));for _,n in ipairs({"God Mode","No Fall Damage","Player ESP","Crystal ESP"})do info(q,"• "..n)end;section(q,"PARCIAIS");for _,n in ipairs({"Auto Pickup — prompt/click ativos; fallback RemoteEvent não identificado","No Ragdoll — recuperação local ativa; remote original não identificado","Rune ESP — detecção local ativa; tier/classificação original incompleta","Instant Prompt — HoldDuration local reconstruído"})do info(q,"• "..n,Color3.fromRGB(255,205,105))end;section(q,"SEM FUNÇÃO ATRIBUÍDA");for _,n in ipairs({"Boulder Farm","Auto Near Collect","Money Farm / Auto Sell","Auto Favorite","Auto Place","Auto Place Best","Auto Place Runes","Show Placement Grid","No Camera Shake","Rune Tracers","Universe ESP","Optimize Crystals","Disable Crystals Glow","Transparent Textures","Server Hop","Lowest Server"})do info(q,"• "..n,Color3.fromRGB(255,145,145))end
+local settings=tab("Settings","≡");section(settings,"Script");button(settings,"Unload Script",function()if S.Destroy then S.Destroy()end end)
+
+-- Ensure first tab visible.
+for i,t in ipairs(tabs)do t.p.Visible=(i==1);t.b.BackgroundColor3=(i==1)and Color3.fromRGB(0,85,255)or Color3.fromRGB(28,34,47)end
+
+-- Drag header mouse/touch.
+local dragging,dragInput,startPos,startFrame=false,nil,nil,nil
+header.InputBegan:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=true;startPos=i.Position;startFrame=main.Position;i.Changed:Connect(function()if i.UserInputState==Enum.UserInputState.End or i.UserInputState==Enum.UserInputState.Cancel then dragging=false end end)end end)
+header.InputChanged:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch then dragInput=i end end)
+track(UIS.InputChanged:Connect(function(i)if dragging and i==dragInput and startPos then local d=i.Position-startPos;main.Position=UDim2.new(startFrame.X.Scale,startFrame.X.Offset+d.X,startFrame.Y.Scale,startFrame.Y.Offset+d.Y)end end))
+
+local function destroy()
+ if S.Destroyed then return end;S.Destroyed=true;S.GodMode=false;S.NoRagdoll=false;S.NoFallDamage=false;S.AutoPickup=false;S.PlayerESP=false;S.CrystalESP=false;S.RuneESP=false;setInstant(false);clearMap(S.PlayerEsp);clearMap(S.CrystalEsp);clearMap(S.RuneEsp);pcall(function()LP:SetAttribute("NoFallDamage",nil)end)
+ for _,c in ipairs(S.Cons)do pcall(function()c:Disconnect()end)end;table.clear(S.Cons);pcall(function()gui:Destroy()end);if ENV.__MAM2_STANDALONE_V1==S then ENV.__MAM2_STANDALONE_V1=nil end
+end
+S.Destroy=destroy;close.Activated:Connect(destroy)
+
+-- Startup notice requested by user.
+local overlay=Instance.new("Frame");overlay.Size=UDim2.fromScale(1,1);overlay.BackgroundColor3=Color3.new(0,0,0);overlay.BackgroundTransparency=.25;overlay.ZIndex=50;overlay.Parent=gui
+local card=Instance.new("Frame");card.AnchorPoint=Vector2.new(.5,.5);card.Position=UDim2.fromScale(.5,.5);card.Size=UDim2.fromOffset(math.min(430,maxW),math.min(390,maxH));card.BackgroundColor3=Color3.fromRGB(18,22,31);card.BorderSizePixel=0;card.ZIndex=51;card.Parent=overlay;round(card,10);stroke(card,Color3.fromRGB(0,85,255))
+local ct=text(card,"Mine a Mountain 2 — Reconstrução V1",15,true);ct.ZIndex=52;ct.Position=UDim2.fromOffset(14,8);ct.Size=UDim2.new(1,-28,0,28);ct.TextXAlignment=Enum.TextXAlignment.Left
+local sub=text(card,"Algumas opções permanecem visíveis, porém sem função atribuída até concluirmos a análise runtime. A aba ? mostra o status completo.",12,false);sub.ZIndex=52;sub.Position=UDim2.fromOffset(14,40);sub.Size=UDim2.new(1,-28,0,48);sub.TextWrapped=true;sub.TextXAlignment=Enum.TextXAlignment.Left
+local sc=Instance.new("ScrollingFrame");sc.Position=UDim2.fromOffset(14,94);sc.Size=UDim2.new(1,-28,1,-148);sc.BackgroundColor3=Color3.fromRGB(13,16,23);sc.BorderSizePixel=0;sc.ScrollBarThickness=4;sc.AutomaticCanvasSize=Enum.AutomaticSize.Y;sc.CanvasSize=UDim2.new();sc.ZIndex=52;sc.Parent=card;round(sc,7)
+local ul=Instance.new("UIListLayout");ul.Padding=UDim.new(0,4);ul.Parent=sc;local up=Instance.new("UIPadding");up.PaddingTop=UDim.new(0,8);up.PaddingLeft=UDim.new(0,10);up.PaddingRight=UDim.new(0,10);up.PaddingBottom=UDim.new(0,8);up.Parent=sc
+for _,n in ipairs({"Boulder Farm","Auto Near Collect","Money Farm / Auto Sell","Auto Favorite","Auto Place","Auto Place Best","Auto Place Runes","Show Placement Grid","No Camera Shake","Rune Tracers","Universe ESP","Optimize Crystals","Disable Crystals Glow","Transparent Textures","Server Hop","Lowest Server"})do local l=info(sc,"• "..n,Color3.fromRGB(255,190,90));l.ZIndex=53 end
+local cb=Instance.new("TextButton");cb.AnchorPoint=Vector2.new(.5,1);cb.Position=UDim2.new(.5,0,1,-10);cb.Size=UDim2.new(1,-28,0,38);cb.BackgroundColor3=Color3.fromRGB(0,85,255);cb.BorderSizePixel=0;cb.Text="Close";cb.TextColor3=Color3.new(1,1,1);cb.Font=Enum.Font.GothamBold;cb.TextSize=14;cb.ZIndex=52;cb.Parent=card;round(cb,7);cb.Activated:Connect(function()overlay:Destroy()end)
+notify("Standalone V1 carregado. Veja a aba ? para o status da reconstrução.",5)
