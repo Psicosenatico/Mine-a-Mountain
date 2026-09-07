@@ -1,0 +1,174 @@
+addKey(g,"misc_jump_power_key","Atalho","None")
+addSlider(g,"misc_jump_power_value","Jump Power",0,200,16,"")
+addToggle(g,"misc_infinity_jump","Pulo infinito",false)
+addKey(g,"misc_infinity_jump_key","Atalho","None")
+addToggle(g,"misc_noclip","Noclip",false)
+addKey(g,"misc_noclip_key","Atalho","N")
+addToggle(g,"misc_fly","Voar",false)
+addKey(g,"misc_fly_key","Atalho","F")
+addSlider(g,"misc_fly_speed","Velocidade do voo",1,1000,125," studs/s")
+g=groupbox(page,"Jogadores")
+addDropdown(g,"ServerPlayer","Jogador",{},nil,false)
+addButton(g,"Atualizar jogadores")
+addButton(g,"Teleportar até o jogador")
+g=groupbox(page,"Ações do Servidor")
+addButton(g,"Reentrar",function()
+TeleportService:TeleportToPlaceInstance(game.PlaceId,game.JobId,LP)
+end)
+addButton(g,"Trocar de servidor",function() hopServer(false) end)
+addButton(g,"Ir para servidor mais vazio",function() hopServer(true) end)
+addButton(g,"Resetar personagem",function()
+local h=hum();if h then h.Health=0 end
+end)
+addButton(g,"Copiar link do servidor",function()
+local cb=setclipboard
+if type(cb)=="function" then cb("roblox://placeId="..game.PlaceId.."&gameInstanceId="..game.JobId) end
+end)
+g=groupbox(page,"Utilidades")
+addToggle(g,"misc_click_tp","Teleporte por clique",false)
+addDropdown(g,"misc_click_tp_key","Tecla de segurar",{"LeftControl","LeftAlt","E"},"LeftControl",false)
+addToggle(g,"misc_freeze","Congelar no lugar",false)
+addDropdown(g,"misc_hide_core","Ocultar UI do Roblox",{"Chat","Player List","Backpack","Emotes"},{},true)
+g=groupbox(page,"Ambiente")
+addToggle(g,"misc_fps_limit","Limitador de FPS",false)
+addSlider(g,"misc_fps_limit_n","FPS",10,240,60,"")
+addToggle(g,"misc_fullbright","Iluminação total",false)
+addKey(g,"misc_fullbright_key","Atalho","None")
+addSlider(g,"misc_fullbright_level","Brilho",0.1,5,2,"")
+addToggle(g,"misc_nofog","Sem neblina",false)
+addKey(g,"misc_nofog_key","Atalho","None")
+addToggle(g,"misc_noshadows","Sem sombras",false)
+addToggle(g,"misc_antilag","Anti-Lag",false)
+addToggle(g,"misc_transparent_textures","Texturas transparentes",false)
+addSlider(g,"misc_transparent_textures_value","Transparência das texturas",0,1,0.5,"")
+g=groupbox(page,"Câmera")
+addToggle(g,"misc_unlock_zoom","Liberar zoom da câmera",false)
+addKey(g,"misc_unlock_zoom_key","Atalho","None")
+addToggle(g,"misc_camera_noclip","Noclip da câmera",false)
+g=groupbox(page,"Sobrevivência")
+addToggle(g,"misc_no_ragdoll","Sem Ragdoll",true)
+addToggle(g,"misc_no_fall_damage","Sem dano de queda",true)
+addToggle(g,"misc_god_mode","God Mode",true)
+g=groupbox(page,"ESP de Jogadores")
+addToggle(g,"PlayerEsp","ESP de Jogadores",false)
+addSlider(g,"PlayerEspSize","Tamanho do jogador",25,250,60,"%")
+g=groupbox(page,"Desempenho")
+addToggle(g,"misc_no3d","Desativar renderização 3D",false)
+addToggle(g,"misc_blkscrn","Tela preta",false)
+addKey(g,"BlkScrnKey","Atalho","None")
+addToggle(g,"misc_remove_lava_hazard","Remover LavaHazard",false)
+addToggle(g,"misc_disable_crystals_glow","Desativar brilho dos cristais",false)
+addToggle(g,"misc_optimize_crystals","Otimizar cristais (FPS Boost)",false)
+addDropdown(g,"OptCrysTiers","Excluir raridades",{RARITIES[1],RARITIES[2],RARITIES[3],RARITIES[4],RARITIES[5],RARITIES[6]},{
+"C / Common","U / Uncommon","R / Rare","E / Epic","L / Legendary","M / Mythic"
+},true)
+g=groupbox(page,"Extras da Câmera")
+addToggle(g,"misc_no_camera_shake","Sem tremor de câmera",false)
+addToggle(g,"misc_no_fire_camera","Sem efeito de fogo na câmera",false)
+g=groupbox(page,"Desativar UI desnecessária")
+addDropdown(g,"misc_hide_hud","Elementos da HUD",{
+{label="Bússola",value="Compass"},{label="Banner da Montanha",value="Mountain Banner"},
+{label="Barra de Altura",value="Height Bar"},{label="Painel de Altitude",value="Altitude Panel"},
+{label="Botão Índice",value="Index Button"},{label="Botão Loja",value="Shop Button"},
+{label="Botão Voltar para Casa",value="Back Home Button"},{label="Timer de Reset",value="Reset Timer"},
+{label="Painel de Eventos",value="Events Panel"},{label="Painel da Mochila",value="Backpack Panel"},
+{label="Medidor de Ar",value="Air Meter"},{label="Texto do Ar",value="Air Label"},
+{label="Vinheta de Dano",value="Damage Vignette"},{label="Hotbar",value="Hotbar"},
+},{},true)
+g=groupbox(page,"Anúncios")
+addToggle(g,"misc_disable_announce","Desativar anúncios",false)
+addDropdown(g,"misc_disable_announce_categories","Categorias",{
+{label="Item encontrado",value="Item Found"},{label="Queimando",value="Burning"},
+{label="Muito longe",value="Too Far"},{label="Não pode escavar",value="Can't Dig"},
+},{},true)
+g=groupbox(page,"Popups")
+addToggle(g,"misc_auto_close_popups","Fechar popups automaticamente",false)
+addDescription(g,"Fecha automaticamente: Termine de minerar!, Muito grande! e Mochila cheia!")
+addToggle(g,"misc_auto_base_on_death","Voltar à Base ao morrer",false)
+g=groupbox(page,"Menu")
+addKey(g,"MenuKeybind","Atalho do menu","X")
+addToggle(g,"lock_ui","Bloquear posição da UI",false)
+addSlider(g,"scrollbar_width","Largura da barra de rolagem (Mobile)",0,12,4,"")
+addButton(g,"Descarregar Script",function()
+if S.Destroy then S.Destroy() end
+end)
+page=UIState.pages["UI Settings"]
+g=groupbox(page,"Configuração")
+addLabel(g,"Conta: •••••••••••• (toque para revelar)")
+addInput(g,"SaveManager_ConfigName","Nome da configuração","")
+addDropdown(g,"SaveManager_ConfigList","Lista de configurações",{},nil,false)
+addButton(g,"Criar configuração")
+addButton(g,"Carregar configuração")
+addButton(g,"Sobrescrever configuração")
+addButton(g,"Atualizar lista")
+addButton(g,"Definir como carregamento automático")
+addLabel(g,"Configuração de carregamento automático atual: nenhuma")
+addToggle(g,"SaveManager_AutoSave","Salvar configuração automaticamente",false)
+addToggle(g,"SaveManager_AutoSaveNotify","Notificar salvamento automático",true)
+addSlider(g,"SaveManager_AutoSaveDelay","Atraso do salvamento automático",0.1,3,0.5," s")
+g=groupbox(page,"Temas")
+addColor(g,"MainColor","Cor principal",COLORS.Main)
+addColor(g,"BackgroundColor","Cor de fundo",COLORS.Background)
+addColor(g,"AccentColor","Cor de destaque",COLORS.Accent)
+addColor(g,"OutlineColor","Cor do contorno",COLORS.Outline)
+addColor(g,"FontColor","Cor da fonte",COLORS.Font)
+addSlider(g,"ThemeManager_CornerRadius","Raio dos cantos",0,12,5,"")
+addSlider(g,"ThemeManager_UIScale","Escala da UI",75,150,75,"%")
+addDropdown(g,"ThemeManager_ThemeList","Lista de temas",{
+"Default","BBot","Fatality","Jester","Mint","Tokyo Night","Ubuntu","Quartz",
+"Catppuccin","Rose Pine","Nord","Dracula","One Dark","Gruvbox","Cyberpunk",
+"Sakura","Forest","Coffee"
+},"Default",false)
+addButton(g,"Definir como padrão")
+addLabel(g,"Tema de carregamento automático atual: Default")
+addDropdown(g,"ThemeManager_Platform","Layout da plataforma",{
+{label="Celular",value="Mobile"},{label="PC",value="PC"}
+},"Mobile",false)
+addInput(g,"ThemeManager_CustomThemeName","Nome do tema personalizado","")
+addDropdown(g,"ThemeManager_CustomThemeList","Temas personalizados",{},nil,false)
+addButton(g,"Salvar tema")
+addButton(g,"Carregar tema")
+g=groupbox(page,"Anti AFK")
+addToggle(g,"ThemeManager_AntiAFK","Anti AFK",true)
+addDescription(g,"Evita que você seja expulso por inatividade.")
+g=groupbox(page,"Registro de Atualizações")
+addButton(g,"Mostrar Registro de Atualizações")
+addToggle(g,"ThemeManager_ShowLogOnLoad","Mostrar registro ao carregar",true)
+g=groupbox(page,"Marca d'água e Atalhos")
+addToggle(g,"ShowWatermark","Mostrar marca d'água",true)
+addSlider(g,"WatermarkPosX","Marca d'água X",0,2000,20,"")
+addSlider(g,"WatermarkPosY","Marca d'água Y",0,2000,20,"")
+addToggle(g,"ShowKeybinds","Mostrar atalhos",false)
+addSlider(g,"KeybindsPosX","Atalhos X",0,2000,504,"")
+addSlider(g,"KeybindsPosY","Atalhos Y",0,2000,246.5,"")
+g=groupbox(page,"Notificações")
+addToggle(g,"NotificationsManager_Enabled","Ativar notificações",true)
+addSlider(g,"NotificationsManager_Duration","Duração da notificação",1,15,5," s")
+addSlider(g,"NotificationsManager_PosX","Notificação X",0,2000,0,"")
+addSlider(g,"NotificationsManager_PosY","Notificação Y",0,2000,140,"")
+addButton(g,"Testar notificação",function() notify("Notificação de teste.",5) end)
+g=groupbox(page,"Reexecução Automática")
+addToggle(g,"auto_reexec","Executar novamente após teleporte",false)
+addDescription(g,"Executa o hub novamente após trocar de servidor ou mudar de lugar.")
+local updateLogText = [[
+ATUALIZAÇÃO #24 — Velocidade das melhorias automáticas
+• A melhoria automática de capacidade de carga compra muito mais rápido.
+• Só envia compras que o saldo realmente consegue pagar.
+ATUALIZAÇÃO #23
+• O modo gratuito não desbloqueia mais funções Premium.
+ATUALIZAÇÃO #22
+• Dupe de Cristais lançado na aba Principal.
+• Dupe de Cristais é exclusivo do Premium.
+• Adicionado guia em vídeo do Dupe.
+ATUALIZAÇÃO #21
+• Salvamento automático de configuração.
+• O menu lembra painéis recolhidos e a última aba.
+• Linhas de rastreamento adicionadas ao ESP de Runas.
+• Server Hop e Rejoin After Sell restaurados.
+• Boulder Farm corrigido para continuar entre Boulders.
+• Auto Favorite, Sell, Fortune Runes, otimizações, proteções e ESPs restaurados.
+ATUALIZAÇÃO #20
+• Boulder Farm não usa mais três pontos fixos.
+• Detecta Boulders sem sobrevoar todo o mapa.
+• Optimize Crystals remove tiers localmente para melhorar FPS.
+• Correções de ESP, mochila, dano e spam de DigRequest.
