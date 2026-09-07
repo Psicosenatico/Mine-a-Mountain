@@ -1,0 +1,251 @@
+ATUALIZAÇÃO #19
+• Veia Prismática adicionada aos visuais de Radar.
+• Filtros de raridade expandidos para Empyrean, Pulsar e Quasar.
+• Auto Favorite não pré-seleciona raridades.
+• Correções de Auto Place Best.
+ATUALIZAÇÃO #18
+• Suporte a Empyrean, Pulsar e Quasar.
+• Freeze Before Sell.
+• Filtros de UI, Pickup Batch/Delay, filtros de mutação e melhorias de ESP.
+• Show Dig Zones adicionado ao Player Dupe Nuker.
+ATUALIZAÇÃO #17
+• Filtro de tamanho mínimo no Auto Pickup.
+• Distância de Radar de Cristais ampliada.
+• Máximo de marcadores de cristal.
+• Auto Buy Plot Capacity.
+• Tiers selecionáveis para Auto Upgrade.
+ATUALIZAÇÃO #16
+• Fortune Runes & Session.
+• Stop Auto Farm If No Crystals Found.
+• Server Hop na aba Cristais.
+• Boulder Farm executa antes do Crystal Farm.
+ATUALIZAÇÃO #15
+• Aba Plots / Auto Placer.
+• Correções na grade.
+• Force Remove Fortune Rune.
+• Retry em timeout de rede.
+ATUALIZAÇÃO #14
+• Auto Buy Replenish para Bombas.
+• Auto Buy Pickaxes.
+• Auto Upgrade Warmth/Air e Carry Weight.
+ATUALIZAÇÃO #13
+• Server Hop Mode: Public / Lowest Server.
+ATUALIZAÇÃO #12
+• VIP Server hop removido.
+• Correções de bloqueio Premium.
+ATUALIZAÇÃO #11
+• Boulder Farm mais rápido.
+• Coleta de cristais de Boulder.
+• Instant Prompt separado de Instant Take.
+ATUALIZAÇÃO #10
+• Auto Placer de 2 pontos.
+• Instant Take para cristais do terreno.
+• Coleta por teleporte no terreno.
+ATUALIZAÇÃO #9
+• Correção de lag no Auto Pickup.
+• Lojas temporariamente ocultas em versões anteriores.
+ATUALIZAÇÃO #8
+• Correções de lojas.
+• Teleport Back suavizado.
+• Auto Sell não vende cristais favoritados.
+• Auto Close Popups ampliado.
+ATUALIZAÇÃO #7
+• Camera Noclip retrabalhado.
+• No Camera Shake.
+• Slider de distância do Crystal ESP.
+ATUALIZAÇÃO #6
+• Correção do Auto Sell.
+• Teleport Back após venda.
+ATUALIZAÇÃO #5
+• Ordem de posição do Boulder Farm corrigida.
+• Escavação em múltiplos pontos.
+• Auto Rune Pickup movido para Runas.
+ATUALIZAÇÃO #4
+• Correções de ESP.
+• Boulder Filter.
+• Fly = F e Noclip = N.
+ATUALIZAÇÃO #3
+• Boulder Farm limpa ao redor antes de minerar.
+• Atalhos para Boulder/Money Farm e Auto Near Collect.
+ATUALIZAÇÃO #2
+• Boulder Auto Farm mantém o centro após uma volta.
+ATUALIZAÇÃO #1 — Versão de desenvolvimento
+• ESP de Cristais, Jogadores, Boulders e Runas.
+• Auto Pickup, Money Farm e Boulder Farm.
+• Lojas, melhorias, teleportes, movimentação e ambiente.
+• No Ragdoll, No Fall Damage e automações auxiliares.
+]]
+local updateOverlay
+local function showUpdateLog()
+if updateOverlay then updateOverlay:Destroy() end
+updateOverlay=Instance.new("Frame")
+updateOverlay.Size=UDim2.fromScale(1,1)
+updateOverlay.BackgroundColor3=Color3.new(0,0,0)
+updateOverlay.BackgroundTransparency=.35
+updateOverlay.ZIndex=200
+updateOverlay.Parent=gui
+local card=Instance.new("Frame")
+card.AnchorPoint=Vector2.new(.5,.5)
+card.Position=UDim2.fromScale(.5,.5)
+card.Size=UDim2.fromOffset(math.min(500,vp.X-30),math.min(390,vp.Y-30))
+card.BackgroundColor3=COLORS.Main
+card.BorderSizePixel=0
+card.ZIndex=201
+card.Parent=updateOverlay
+corner(card,9);stroke(card,COLORS.Outline,0)
+local t=textLabel(card,"REGISTRO DE ATUALIZAÇÕES",13,true)
+t.Position=UDim2.fromOffset(12,5);t.Size=UDim2.new(1,-24,0,28);t.ZIndex=202
+local sc=Instance.new("ScrollingFrame")
+sc.Position=UDim2.fromOffset(10,38)
+sc.Size=UDim2.new(1,-20,1,-84)
+sc.BackgroundColor3=COLORS.Background
+sc.BorderSizePixel=0
+sc.ScrollBarThickness=4
+sc.ScrollBarImageColor3=COLORS.Accent
+sc.AutomaticCanvasSize=Enum.AutomaticSize.Y
+sc.CanvasSize=UDim2.new()
+sc.ZIndex=202
+sc.Parent=card
+corner(sc,6)
+local ll=textLabel(sc,updateLogText,10,false)
+ll.Position=UDim2.fromOffset(8,7)
+ll.Size=UDim2.new(1,-16,0,0)
+ll.AutomaticSize=Enum.AutomaticSize.Y
+ll.TextWrapped=true
+ll.TextYAlignment=Enum.TextYAlignment.Top
+ll.ZIndex=203
+local close=Instance.new("TextButton")
+close.AnchorPoint=Vector2.new(.5,1)
+close.Position=UDim2.new(.5,0,1,-8)
+close.Size=UDim2.new(1,-20,0,32)
+close.BackgroundColor3=COLORS.Accent
+close.BorderSizePixel=0
+close.Font=Enum.Font.GothamBold
+close.TextSize=12
+close.TextColor3=COLORS.Font
+close.Text="Fechar"
+close.ZIndex=202
+close.Parent=card
+corner(close,6)
+close.Activated:Connect(function()updateOverlay:Destroy();updateOverlay=nil end)
+end
+for _,obj in ipairs(UIState.pages["UI Settings"]:GetDescendants()) do
+if obj:IsA("TextButton") and obj.Text=="Mostrar Registro de Atualizações" then
+obj.Activated:Connect(showUpdateLog)
+end
+end
+local floating=Instance.new("ImageButton")
+floating.Name="XGRSGlobalToggle"
+floating.AnchorPoint=Vector2.new(0,0)
+floating.Position=UDim2.new(0,16,0,55)
+floating.Size=UDim2.fromOffset(50,50)
+floating.BackgroundColor3=COLORS.Main
+floating.BackgroundTransparency=.1
+floating.BorderSizePixel=0
+floating.Image="rbxassetid://7734053495"
+floating.ImageColor3=COLORS.Accent
+floating.ImageTransparency=0
+floating.ZIndex=9999
+floating.Parent=gui
+corner(floating,12)
+stroke(floating,COLORS.Accent,0,2)
+local floatingSuppressUntil=0
+local function setMenuVisible(v)
+UIState.menuVisible=v
+main.Visible=v
+if not v and openedDropdown then openedDropdown.Visible=false;openedDropdown=nil end
+end
+floating.Activated:Connect(function()
+if os.clock()<floatingSuppressUntil then return end
+setMenuVisible(not UIState.menuVisible)
+end)
+lockButton.Activated:Connect(function()
+UIState.dragLocked=not UIState.dragLocked
+UIState.values.lock_ui=UIState.dragLocked
+lockButton.Image=UIState.dragLocked and "rbxassetid://119765975153029" or "rbxassetid://110263656507369"
+end)
+do
+local dragging=false
+local startInput,startPos
+local moved=false
+floating.InputBegan:Connect(function(i)
+if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+dragging=true;moved=false;startInput=i.Position;startPos=floating.Position
+end
+end)
+track(UIS.InputChanged:Connect(function(i)
+if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+local d=i.Position-startInput
+if d.Magnitude>6 then moved=true end
+local now=Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize or Vector2.new(800,600)
+floating.Position=UDim2.fromOffset(
+math.clamp(startPos.X.Offset+d.X,2,math.max(2,now.X-52)),
+math.clamp(startPos.Y.Offset+d.Y,2,math.max(2,now.Y-52))
+)
+end
+end))
+track(UIS.InputEnded:Connect(function(i)
+if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+if dragging and moved then floatingSuppressUntil=os.clock()+.20 end
+dragging=false
+end
+end))
+end
+do
+local dragging=false
+local dragInput,startInput,startPos
+topbar.InputBegan:Connect(function(i)
+if UIState.dragLocked then return end
+if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+dragging=true;startInput=i.Position;startPos=main.Position
+i.Changed:Connect(function()
+if i.UserInputState==Enum.UserInputState.End or i.UserInputState==Enum.UserInputState.Cancel then dragging=false end
+end)
+end
+end)
+topbar.InputChanged:Connect(function(i)
+if i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch then dragInput=i end
+end)
+track(UIS.InputChanged:Connect(function(i)
+if dragging and i==dragInput then
+local d=i.Position-startInput
+main.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)
+end
+end))
+end
+task.spawn(function()
+while gui.Parent and not S.Destroyed do
+UIState.dragLocked=UIState.values.lock_ui==true
+task.wait(.2)
+end
+end)
+selectTab("Main")
+local function destroy()
+if S.Destroyed then return end
+S.Destroyed=true
+S.GodMode=false
+S.NoRagdoll=false
+S.NoFallDamage=false
+S.NoCameraShake=false
+S.AutoPickup=false
+S.PlayerESP=false
+S.UniverseESP=false
+S.RuneESP=false
+S.RuneTracers=false
+setInstantPrompt(false)
+restoreTransparent()
+restoreGlow()
+clearMap(S.PlayerEsp)
+clearMap(S.UniverseEsp)
+clearMap(S.RuneEsp)
+clearMap(S.RuneTracersMap)
+pcall(function()LP:SetAttribute("NoFallDamage",nil)end)
+local h=hum()
+if h then pcall(function()h.CameraOffset=Vector3.zero end)end
+for _,c in ipairs(S.Cons)do pcall(function()c:Disconnect()end)end
+table.clear(S.Cons)
+pcall(function()gui:Destroy()end)
+if ENV.__MAM2_STANDALONE_V2==S then ENV.__MAM2_STANDALONE_V2=nil end
+end
+S.Destroy=destroy
+notify("Interface V3 em português carregada.",5)
