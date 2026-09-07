@@ -1,0 +1,403 @@
+
+-- MAM2_RECOVERED_CLIENT_BINDINGS_V1
+-- Consolida automaticamente funcoes locais/client-side cujo comportamento
+-- pode ser reproduzido sem inventar RemoteEvents ou argumentos ocultos.
+
+local Lighting = game:GetService("Lighting")
+local VirtualUser
+pcall(function() VirtualUser = game:GetService("VirtualUser") end)
+
+S.Client = S.Client or {
+    walk = false,
+    walkSpeed = 16,
+    sprint = false,
+    sprintSpeed = 60,
+    jump = false,
+    jumpPower = 50,
+    infiniteJump = false,
+    noclip = false,
+    fly = false,
+    flySpeed = 125,
+    freeze = false,
+    fpsLimit = false,
+    fps = 60,
+    fullbright = false,
+    brightness = 2,
+    noFog = false,
+    noShadows = false,
+    unlockZoom = false,
+    cameraNoclip = false,
+    no3d = false,
+    blackScreen = false,
+    antiAFK = true,
+}
+
+local Client = S.Client
+local original = S.ClientOriginal or {
+    LightingBrightness = Lighting.Brightness,
+    Ambient = Lighting.Ambient,
+    OutdoorAmbient = Lighting.OutdoorAmbient,
+    GlobalShadows = Lighting.GlobalShadows,
+    FogStart = Lighting.FogStart,
+    FogEnd = Lighting.FogEnd,
+    CameraMaxZoomDistance = LP.CameraMaxZoomDistance,
+    CameraMinZoomDistance = LP.CameraMinZoomDistance,
+}
+S.ClientOriginal = original
+
+local collisionOriginal = setmetatable({}, {__mode="k"})
+local blackOverlay
+local renderingDisabled = false
+local sprintHeld = false
+
+local function currentHumanoid()
+    return hum()
+end
+
+local function currentRoot()
+    return root()
+end
+
+local function rememberCollision(part)
+    if collisionOriginal[part] == nil then
+        collisionOriginal[part] = part.CanCollide
+    end
+end
+
+local function restoreCollision()
+    for part, value in pairs(collisionOriginal) do
+        if part and part.Parent then
+            pcall(function() part.CanCollide = value end)
+        end
+        collisionOriginal[part] = nil
+    end
+end
+
+local function setBlackScreen(enabled)
+    Client.blackScreen = enabled == true
+    if Client.blackScreen then
+        if not blackOverlay or not blackOverlay.Parent then
+            blackOverlay = Instance.new("Frame")
+            blackOverlay.Name = "__MAM2_BlackScreen"
+            blackOverlay.Size = UDim2.fromScale(1,1)
+            blackOverlay.BackgroundColor3 = Color3.new(0,0,0)
+            blackOverlay.BorderSizePixel = 0
+            blackOverlay.ZIndex = 9000
+            blackOverlay.Parent = gui
+        end
+        blackOverlay.Visible = true
+    elseif blackOverlay then
+        blackOverlay.Visible = false
+    end
+end
+
+local function set3D(enabled)
+    Client.no3d = enabled == true
+    pcall(function()
+        RunService:Set3dRenderingEnabled(not Client.no3d)
+        renderingDisabled = Client.no3d
+    end)
+end
+
+local function restoreLighting()
+    pcall(function()
+        Lighting.Brightness = original.LightingBrightness
+        Lighting.Ambient = original.Ambient
+        Lighting.OutdoorAmbient = original.OutdoorAmbient
+        Lighting.GlobalShadows = original.GlobalShadows
+        Lighting.FogStart = original.FogStart
+        Lighting.FogEnd = original.FogEnd
+    end)
+end
+
+KNOWN_TOGGLES.misc_walkspeed_enabled = function(v)
+    Client.walk = v == true
+end
+KNOWN_OPTIONS.misc_walkspeed_value = function(v)
+    Client.walkSpeed = tonumber(v) or Client.walkSpeed
+end
+
+KNOWN_TOGGLES.misc_sprint = function(v)
+    Client.sprint = v == true
+end
+KNOWN_OPTIONS.misc_sprint_speed = function(v)
+    Client.sprintSpeed = tonumber(v) or Client.sprintSpeed
+end
+
+KNOWN_TOGGLES.misc_jump_power_enabled = function(v)
+    Client.jump = v == true
+end
+KNOWN_OPTIONS.misc_jump_power_value = function(v)
+    Client.jumpPower = tonumber(v) or Client.jumpPower
+end
+
+KNOWN_TOGGLES.misc_infinity_jump = function(v)
+    Client.infiniteJump = v == true
+end
+
+KNOWN_TOGGLES.misc_noclip = function(v)
+    Client.noclip = v == true
+    if not Client.noclip then restoreCollision() end
+end
+
+KNOWN_TOGGLES.misc_fly = function(v)
+    Client.fly = v == true
+    if not Client.fly then
+        local r = currentRoot()
+        if r then
+            pcall(function()
+                r.AssemblyLinearVelocity = Vector3.zero
+                r.AssemblyAngularVelocity = Vector3.zero
+            end)
+        end
+    end
+end
+KNOWN_OPTIONS.misc_fly_speed = function(v)
+    Client.flySpeed = tonumber(v) or Client.flySpeed
+end
+
+KNOWN_TOGGLES.misc_freeze = function(v)
+    Client.freeze = v == true
+    local r = currentRoot()
+    if r then pcall(function() r.Anchored = Client.freeze end) end
+end
+
+KNOWN_TOGGLES.misc_fps_limit = function(v)
+    Client.fpsLimit = v == true
+    local cap = setfpscap
+    if type(cap) == "function" then
+        pcall(cap, Client.fpsLimit and Client.fps or 1000)
+    end
+end
+KNOWN_OPTIONS.misc_fps_limit_n = function(v)
+    Client.fps = math.clamp(tonumber(v) or Client.fps, 10, 240)
+    if Client.fpsLimit and type(setfpscap) == "function" then
+        pcall(setfpscap, Client.fps)
+    end
+end
+
+KNOWN_TOGGLES.misc_fullbright = function(v)
+    Client.fullbright = v == true
+    if not Client.fullbright then
+        restoreLighting()
+    end
+end
+KNOWN_OPTIONS.misc_fullbright_level = function(v)
+    Client.brightness = math.clamp(tonumber(v) or Client.brightness, 0.1, 5)
+end
+
+KNOWN_TOGGLES.misc_nofog = function(v)
+    Client.noFog = v == true
+    if not Client.noFog then
+        pcall(function()
+            Lighting.FogStart = original.FogStart
+            Lighting.FogEnd = original.FogEnd
+        end)
+    end
+end
+
+KNOWN_TOGGLES.misc_noshadows = function(v)
+    Client.noShadows = v == true
+    if not Client.noShadows then
+        pcall(function() Lighting.GlobalShadows = original.GlobalShadows end)
+    end
+end
+
+KNOWN_TOGGLES.misc_unlock_zoom = function(v)
+    Client.unlockZoom = v == true
+    pcall(function()
+        LP.CameraMaxZoomDistance = Client.unlockZoom and 100000 or original.CameraMaxZoomDistance
+        if not Client.unlockZoom then
+            LP.CameraMinZoomDistance = original.CameraMinZoomDistance
+        end
+    end)
+end
+
+KNOWN_TOGGLES.misc_camera_noclip = function(v)
+    Client.cameraNoclip = v == true
+    pcall(function()
+        LP.DevCameraOcclusionMode = Client.cameraNoclip
+            and Enum.DevCameraOcclusionMode.Invisicam
+            or Enum.DevCameraOcclusionMode.Zoom
+    end)
+end
+
+KNOWN_TOGGLES.misc_no3d = function(v)
+    set3D(v)
+end
+KNOWN_TOGGLES.misc_blkscrn = function(v)
+    setBlackScreen(v)
+end
+
+KNOWN_TOGGLES.ThemeManager_AntiAFK = function(v)
+    Client.antiAFK = v == true
+end
+
+-- O original mantem God/NoFall/NoRagdoll ativos por padrao; reaplica os
+-- bindings ja recuperados em vez de deixa-los apenas como estado visual.
+KNOWN_TOGGLES.misc_god_mode = function(v) S.GodMode = v == true end
+KNOWN_TOGGLES.misc_no_fall_damage = function(v) S.NoFallDamage = v == true end
+KNOWN_TOGGLES.misc_no_ragdoll = function(v) S.NoRagdoll = v == true end
+KNOWN_TOGGLES.misc_no_camera_shake = function(v) S.NoCameraShake = v == true end
+
+-- Aliases da interface reconstruida para os mesmos nucleos.
+KNOWN_TOGGLES.PlayerEsp = KNOWN_TOGGLES.PlayerEsp or function(v)
+    S.PlayerESP = v == true
+    if not S.PlayerESP then clearMap(S.PlayerEsp) end
+end
+KNOWN_TOGGLES.CrystalEsp = KNOWN_TOGGLES.CrystalEsp or function(v)
+    S.UniverseESP = v == true
+    if not S.UniverseESP then clearMap(S.UniverseEsp) end
+end
+KNOWN_TOGGLES.RuneEsp = KNOWN_TOGGLES.RuneEsp or function(v)
+    S.RuneESP = v == true
+    if not S.RuneESP then clearMap(S.RuneEsp) end
+end
+KNOWN_TOGGLES.RuneTrc = KNOWN_TOGGLES.RuneTrc or function(v)
+    S.RuneTracers = v == true
+    if not S.RuneTracers then clearMap(S.RuneTracersMap) end
+end
+
+-- Configura os valores observados no menu original.
+UIState.values.misc_walkspeed_value = UIState.values.misc_walkspeed_value or 16
+UIState.values.misc_sprint_speed = UIState.values.misc_sprint_speed or 60
+UIState.values.misc_jump_power_value = UIState.values.misc_jump_power_value or 16
+UIState.values.misc_fly_speed = UIState.values.misc_fly_speed or 125
+UIState.values.misc_fps_limit_n = UIState.values.misc_fps_limit_n or 60
+UIState.values.misc_fullbright_level = UIState.values.misc_fullbright_level or 2
+
+track(UIS.JumpRequest:Connect(function()
+    if not Client.infiniteJump or S.Destroyed then return end
+    local h = currentHumanoid()
+    if h then pcall(function() h:ChangeState(Enum.HumanoidStateType.Jumping) end) end
+end))
+
+track(UIS.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.LeftShift then
+        sprintHeld = true
+    end
+end))
+track(UIS.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.LeftShift then
+        sprintHeld = false
+    end
+end))
+
+track(LP.Idled:Connect(function()
+    if not Client.antiAFK or not VirtualUser then return end
+    pcall(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+    end)
+end))
+
+track(RunService.Stepped:Connect(function()
+    if S.Destroyed then return end
+    local c = char()
+    if Client.noclip and c then
+        for _, obj in ipairs(c:GetDescendants()) do
+            if obj:IsA("BasePart") then
+                rememberCollision(obj)
+                obj.CanCollide = false
+            end
+        end
+    end
+end))
+
+track(RunService.Heartbeat:Connect(function()
+    if S.Destroyed then return end
+
+    local h = currentHumanoid()
+    local r = currentRoot()
+
+    if h then
+        if Client.walk then
+            h.WalkSpeed = Client.walkSpeed
+        end
+        if Client.sprint and sprintHeld then
+            h.WalkSpeed = Client.sprintSpeed
+        end
+        if Client.jump then
+            h.UseJumpPower = true
+            h.JumpPower = Client.jumpPower
+        end
+    end
+
+    if Client.freeze and r and not r.Anchored then
+        r.Anchored = true
+    end
+
+    if Client.fly and r and h then
+        local move = h.MoveDirection
+        local velocity = move * Client.flySpeed
+        r.AssemblyLinearVelocity = Vector3.new(velocity.X, 0, velocity.Z)
+        r.AssemblyAngularVelocity = Vector3.zero
+    end
+
+    if Client.fullbright then
+        Lighting.Brightness = Client.brightness
+        Lighting.Ambient = Color3.new(1,1,1)
+        Lighting.OutdoorAmbient = Color3.new(1,1,1)
+    end
+    if Client.noFog then
+        Lighting.FogStart = 1e6
+        Lighting.FogEnd = 1e7
+    end
+    if Client.noShadows then
+        Lighting.GlobalShadows = false
+    end
+end))
+
+-- Consolida os defaults funcionais ja recuperados.
+task.defer(function()
+    pcall(function()
+        if UIState.values.misc_no_ragdoll == true then KNOWN_TOGGLES.misc_no_ragdoll(true) end
+        if UIState.values.misc_no_fall_damage == true then KNOWN_TOGGLES.misc_no_fall_damage(true) end
+        if UIState.values.misc_god_mode == true then KNOWN_TOGGLES.misc_god_mode(true) end
+        if UIState.values.ThemeManager_AntiAFK ~= false then KNOWN_TOGGLES.ThemeManager_AntiAFK(true) end
+    end)
+end)
+
+-- Cleanup complementar.
+local previousDestroyClient = S.Destroy
+S.Destroy = function()
+    Client.walk = false
+    Client.sprint = false
+    Client.jump = false
+    Client.infiniteJump = false
+    Client.noclip = false
+    Client.fly = false
+    Client.freeze = false
+    Client.fullbright = false
+    Client.noFog = false
+    Client.noShadows = false
+    Client.unlockZoom = false
+    Client.cameraNoclip = false
+    Client.antiAFK = false
+
+    local r = currentRoot()
+    if r then
+        pcall(function()
+            r.Anchored = false
+            r.AssemblyLinearVelocity = Vector3.zero
+            r.AssemblyAngularVelocity = Vector3.zero
+        end)
+    end
+    restoreCollision()
+    restoreLighting()
+    pcall(function()
+        LP.CameraMaxZoomDistance = original.CameraMaxZoomDistance
+        LP.CameraMinZoomDistance = original.CameraMinZoomDistance
+        LP.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Zoom
+    end)
+    if renderingDisabled then pcall(function() RunService:Set3dRenderingEnabled(true) end) end
+    if blackOverlay then pcall(function() blackOverlay:Destroy() end) end
+    if type(setfpscap) == "function" then pcall(setfpscap, 1000) end
+
+    if previousDestroyClient then
+        return previousDestroyClient()
+    end
+end
+
+notify("Bindings locais recuperados foram conectados automaticamente.",4)
