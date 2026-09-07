@@ -1,5 +1,5 @@
 --[[
-Mine a Mountain 2 - Mapeador Runtime de Reconstrucao V2
+Mine a Mountain 2 - Mapeador Runtime de Reconstrucao V2.1
 
 Fluxo:
 1) Execute este mapeador.
@@ -482,7 +482,105 @@ if parent then
     fix.Size=UDim2.new(1,0,0,12);fix.BackgroundColor3=header.BackgroundColor3
     fix.BorderSizePixel=0;fix.Parent=header
 
-    local title=label(header,"MAM2 | Mapeador Runtime V2",9,14);title.Font=Enum.Font.GothamBold
+    local title=label(header,"MAM2 | Mapeador Runtime V2.1",9,14);title.Font=Enum.Font.GothamBold
+    title.Size=UDim2.new(1,-66,0,22)
+
+    -- Minimize: esconde apenas o painel. A captura continua ativa.
+    local minimize=Instance.new("TextButton")
+    minimize.Name="MinimizeButton"
+    minimize.AnchorPoint=Vector2.new(1,0)
+    minimize.Position=UDim2.new(1,-8,0,7)
+    minimize.Size=UDim2.fromOffset(28,28)
+    minimize.BackgroundColor3=Color3.fromRGB(29,47,72)
+    minimize.BorderSizePixel=0
+    minimize.Font=Enum.Font.GothamBold
+    minimize.TextSize=18
+    minimize.TextColor3=Color3.fromRGB(245,248,252)
+    minimize.Text="—"
+    minimize.AutoButtonColor=false
+    minimize.Parent=header
+    corner(minimize,8)
+
+    -- Flutuante pequeno e circular: aparece somente quando minimizado.
+    local floating=Instance.new("TextButton")
+    floating.Name="MAM2ReconFloatingToggle"
+    floating.Position=UDim2.fromOffset(18,78)
+    floating.Size=UDim2.fromOffset(42,42)
+    floating.BackgroundColor3=Color3.fromRGB(21,32,48)
+    floating.BorderSizePixel=0
+    floating.Font=Enum.Font.GothamBold
+    floating.TextSize=15
+    floating.TextColor3=Color3.fromRGB(106,173,255)
+    floating.Text="M"
+    floating.AutoButtonColor=false
+    floating.Visible=false
+    floating.ZIndex=20
+    floating.Parent=gui
+    corner(floating,21)
+    local floatingStroke=Instance.new("UIStroke")
+    floatingStroke.Color=Color3.fromRGB(62,96,138)
+    floatingStroke.Transparency=.12
+    floatingStroke.Thickness=1
+    floatingStroke.Parent=floating
+
+    local floatingSuppressUntil=0
+    local function setMinimized(v)
+        frame.Visible=not v
+        floating.Visible=v
+    end
+
+    minimize.Activated:Connect(function()
+        setMinimized(true)
+    end)
+
+    floating.Activated:Connect(function()
+        if os.clock()<floatingSuppressUntil then return end
+        setMinimized(false)
+    end)
+
+    -- O flutuante é arrastável por mouse/toque.
+    -- Depois de arrastar, o mesmo toque não reabre o menu acidentalmente.
+    do
+        local draggingFloat=false
+        local floatStartInput=nil
+        local floatStartPos=nil
+        local movedFloat=false
+
+        floating.InputBegan:Connect(function(i)
+            if i.UserInputType==Enum.UserInputType.MouseButton1
+                or i.UserInputType==Enum.UserInputType.Touch then
+                draggingFloat=true
+                movedFloat=false
+                floatStartInput=i.Position
+                floatStartPos=floating.Position
+            end
+        end)
+
+        UIS.InputChanged:Connect(function(i)
+            if not draggingFloat then return end
+            if i.UserInputType~=Enum.UserInputType.MouseMovement
+                and i.UserInputType~=Enum.UserInputType.Touch then return end
+
+            local d=i.Position-floatStartInput
+            if d.Magnitude>6 then movedFloat=true end
+
+            local camNow=workspace.CurrentCamera
+            local vpNow=camNow and camNow.ViewportSize or Vector2.new(800,600)
+            local x=math.clamp(floatStartPos.X.Offset+d.X,2,math.max(2,vpNow.X-44))
+            local y=math.clamp(floatStartPos.Y.Offset+d.Y,2,math.max(2,vpNow.Y-44))
+            floating.Position=UDim2.fromOffset(x,y)
+        end)
+
+        UIS.InputEnded:Connect(function(i)
+            if i.UserInputType==Enum.UserInputType.MouseButton1
+                or i.UserInputType==Enum.UserInputType.Touch then
+                if draggingFloat and movedFloat then
+                    floatingSuppressUntil=os.clock()+0.20
+                end
+                draggingFloat=false
+            end
+        end)
+    end
     local status=label(frame,"Status: PARADO",50,12)
     local counter=label(frame,"Remote: 0 | Prompt: 0 | Internos: 0",72,11)
     counter.TextColor3=Color3.fromRGB(177,191,210)
@@ -565,5 +663,5 @@ end
 
 print("[MAM2-RECON] PRONTO. Toque em Iniciar mapeamento.")
 pcall(function()
-    StarterGui:SetCore("SendNotification",{Title="MAM2 Recon",Text="Mapeador V2 pronto.",Duration=5})
+    StarterGui:SetCore("SendNotification",{Title="MAM2 Recon",Text="Mapeador V2.1 pronto.",Duration=5})
 end)
