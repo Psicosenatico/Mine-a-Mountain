@@ -1,0 +1,434 @@
+
+-- MAM2_INSTANT_INTERACTION_CORE_V1
+-- Núcleo compartilhado de interação/coleta reconstruído a partir do payload original.
+-- Mantém os mesmos conceitos observados no runtime:
+--   PICK.range=25, burst=12, cooldown=0.12, retry=0.2,
+--   instantRadius=60, instantTick=0.2 e coleta de runas em lotes de até 4.
+
+S.PICK = S.PICK or {
+    burst = 12,
+    instantRadius = 60,
+    range = 25,
+    fallbackInterval = 0.15,
+    pad = 2,
+    forget = 5,
+    aimDot = 0.995,
+    instantTick = 0.2,
+    aimRange = 5000,
+    retry = 0.2,
+    cooldown = 0.12,
+    restore = 0.2,
+}
+
+-- A rotina antiga de AutoPickup tinha parâmetros simplificados.
+-- A partir daqui ela fica desativada e o núcleo abaixo assume essa função.
+S.AutoPickup = false
+S.AutoPickupCore = false
+S.AutoRunePickup = false
+S.AutoRunePickupMode = {"Near"}
+S.M2InstantPickup = false
+S.M2PickupCrystals = false
+S.M2PickupRunes = false
+S.BoulderLootAssist = false
+S.InstantInteractionClock = 0
+S.AutoPickupClock = 0
+S.RunePickupClock = 0
+S.PromptFireClock = setmetatable({}, {__mode = "k"})
+S.InstantCoreStats = {
+    prompts = 0,
+    crystals = 0,
+    runes = 0,
+}
+
+local function rememberPromptDuration(prompt)
+    if not prompt or not prompt.Parent or not prompt:IsA("ProximityPrompt") then
+        return false
+    end
+    if S.PromptDurations[prompt] == nil then
+        local ok, duration = pcall(function()
+            return prompt.HoldDuration
+        end)
+        if ok then
+            S.PromptDurations[prompt] = duration
+        end
+    end
+    return true
+end
+
+local function restorePromptDuration(prompt)
+    local duration = S.PromptDurations[prompt]
+    if duration ~= nil and prompt and prompt.Parent then
+        pcall(function()
+            prompt.HoldDuration = duration
+        end)
+    end
+end
+
+local function firePromptCore(prompt, forceInstant)
+    if not prompt or not prompt.Parent or not prompt:IsA("ProximityPrompt") then
+        return false
+    end
+
+    local now = os.clock()
+    local last = S.PromptFireClock[prompt]
+    if last and now - last < S.PICK.retry then
+        return false
+    end
+    S.PromptFireClock[prompt] = now
+
+    rememberPromptDuration(prompt)
+
+    if forceInstant or S.InstantPrompt or S.M2InstantPickup then
+        pcall(function()
+            prompt.HoldDuration = 0
+        end)
+    end
+
+    local fired = false
+    if type(fireproximityprompt) == "function" then
+        fired = pcall(fireproximityprompt, prompt)
+    end
+
+    -- Não força InputHoldBegin/InputHoldEnd como fallback porque o payload
+    -- original prioriza firePrompt/ProximityPrompt e depois caminhos específicos
+    -- por tipo de objeto. Para cristais o fallback de ClickDetector é feito abaixo.
+    if fired then
+        S.InstantCoreStats.prompts = S.InstantCoreStats.prompts + 1
+    end
+
+    return fired
+end
+
+-- Substitui o helper antigo. O Heartbeat antigo de AutoPickup ficou desativado
+-- porque S.AutoPickup permanece false; os novos bindings usam AutoPickupCore.
+grabCrystalLocal = function(inst)
+    if not inst or not inst.Parent then return false end
+
+    local prompt = promptOf(inst)
+    if prompt and firePromptCore(prompt, S.InstantPrompt or S.M2InstantPickup) then
+        S.InstantCoreStats.crystals = S.InstantCoreStats.crystals + 1
+        return true
+    end
+
+    local click = clickOf(inst)
+    if click and type(fireclickdetector) == "function" then
+        local ok = pcall(fireclickdetector, click, 0)
+        if ok then
+            S.InstantCoreStats.crystals = S.InstantCoreStats.crystals + 1
+            return true
+        end
+    end
+
+    return false
+end
+
+local function setInstantPromptCore(enabled)
+    enabled = enabled == true
+    S.InstantPrompt = enabled
+
+    if enabled then
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if obj:IsA("ProximityPrompt") then
+                rememberPromptDuration(obj)
+                pcall(function()
+                    obj.HoldDuration = 0
+                end)
+            end
+        end
+    else
+        if not S.M2InstantPickup then
+            for prompt in pairs(S.PromptDurations) do
+                restorePromptDuration(prompt)
+            end
+        end
+    end
+end
+
+-- Mantém o nome local já usado por KNOWN_TOGGLES e pelo destroy().
+setInstantPrompt = setInstantPromptCore
+
+local function modeContains(value, wanted)
+    if type(value) == "string" then
+        return value == wanted or value == "Both"
+    end
+    if type(value) == "table" then
+        for k, v in pairs(value) do
+            if v == true and (tostring(k) == wanted or tostring(k) == "Both") then
+                return true
+            end
+            if tostring(v) == wanted or tostring(v) == "Both" then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function basePartFor(inst)
+    if not inst then return nil end
+    if inst:IsA("BasePart") then return inst end
+    if inst:IsA("Model") then
+        return inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart", true)
+    end
+    local model = inst:FindFirstAncestorOfClass("Model")
+    if model then
+        return model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+    end
+    return inst:FindFirstAncestorWhichIsA("BasePart")
+end
+
+local function collectCrystalsBurst(radius, burst, forceInstant)
+    local r = root()
+    if not r then return 0 end
+
+    radius = tonumber(radius) or S.PICK.range
+    burst = tonumber(burst) or S.PICK.burst
+
+    local overlap = OverlapParams.new()
+    overlap.FilterType = Enum.RaycastFilterType.Exclude
+    overlap.FilterDescendantsInstances = {char()}
+
+    local ok, parts = pcall(
+        Workspace.GetPartBoundsInRadius,
+        Workspace,
+        r.Position,
+        radius + S.PICK.pad,
+        overlap
+    )
+    if not ok or type(parts) ~= "table" then return 0 end
+
+    local seen = {}
+    local grabbed = 0
+
+    for _, part in ipairs(parts) do
+        if grabbed >= burst then break end
+
+        local crystal = crystalPart(part)
+        if crystal and not seen[crystal] then
+            seen[crystal] = true
+
+            local collected = getAttr(crystal, "Collected")
+            if collected == nil and crystal.Parent then
+                collected = getAttr(crystal.Parent, "Collected")
+            end
+
+            if collected ~= true then
+                local prompt = promptOf(crystal)
+                local success = false
+
+                if prompt then
+                    success = firePromptCore(prompt, forceInstant)
+                end
+
+                if not success then
+                    success = grabCrystalLocal(crystal)
+                end
+
+                if success then
+                    grabbed = grabbed + 1
+                end
+            end
+        end
+    end
+
+    return grabbed
+end
+
+local function getDroppedRunesFolder()
+    return Workspace:FindFirstChild("DroppedRunes")
+        or Workspace:FindFirstChild("Runes")
+        or Workspace:FindFirstChild("Dropped Rune")
+end
+
+local function collectRunesNear(radius, maxCount, forceInstant)
+    local r = root()
+    if not r then return 0, 0 end
+
+    radius = tonumber(radius) or 20
+    maxCount = tonumber(maxCount) or 4
+
+    local folder = getDroppedRunesFolder()
+    if not folder then return 0, 0 end
+
+    local now = os.clock()
+    local grabbed = 0
+    local seen = 0
+    local prompts = {}
+
+    for _, obj in ipairs(folder:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") and obj.Parent then
+            local part = basePartFor(obj.Parent)
+            if part then
+                local distance = (part.Position - r.Position).Magnitude
+                if distance <= radius then
+                    prompts[#prompts + 1] = {
+                        prompt = obj,
+                        distance = distance,
+                    }
+                end
+            end
+        end
+    end
+
+    table.sort(prompts, function(a, b)
+        return a.distance < b.distance
+    end)
+
+    for _, item in ipairs(prompts) do
+        seen = seen + 1
+        if grabbed >= maxCount then break end
+
+        local prompt = item.prompt
+        local last = S.PromptFireClock[prompt]
+        if not last or now - last >= S.PICK.retry then
+            if firePromptCore(prompt, forceInstant) then
+                grabbed = grabbed + 1
+                S.InstantCoreStats.runes = S.InstantCoreStats.runes + 1
+            end
+        end
+    end
+
+    return grabbed, seen
+end
+
+-- Exposto para o futuro núcleo completo do Boulder Farm.
+-- O payload original entra na fase "loot" e chama grabNear(RUNE_SWEEP),
+-- portanto o minerador poderá reutilizar exatamente este serviço.
+S.GrabRunesNear = collectRunesNear
+S.CollectCrystalsBurst = collectCrystalsBurst
+S.FirePrompt = firePromptCore
+
+-- Prompts novos que surgirem enquanto Instant Prompt estiver ativo também
+-- recebem HoldDuration=0, sem depender de o PromptShown ter disparado primeiro.
+track(Workspace.DescendantAdded:Connect(function(obj)
+    if not obj:IsA("ProximityPrompt") then return end
+    if S.InstantPrompt or S.M2InstantPickup then
+        task.defer(function()
+            if obj.Parent then
+                rememberPromptDuration(obj)
+                pcall(function()
+                    obj.HoldDuration = 0
+                end)
+            end
+        end)
+    end
+end))
+
+-- Reatribui os bindings da UI para o núcleo reconstruído.
+KNOWN_TOGGLES.AutoPickup = function(v)
+    S.AutoPickup = false
+    S.AutoPickupCore = v == true
+end
+
+KNOWN_TOGGLES.InstantPrompt = function(v)
+    setInstantPromptCore(v)
+end
+
+KNOWN_TOGGLES.AutoRunePickup = function(v)
+    S.AutoRunePickup = v == true
+end
+
+KNOWN_TOGGLES.M2InstPk = function(v)
+    S.M2InstantPickup = v == true
+    if not S.M2InstantPickup and not S.InstantPrompt then
+        for prompt in pairs(S.PromptDurations) do
+            restorePromptDuration(prompt)
+        end
+    end
+end
+
+KNOWN_TOGGLES.M2PkCrys = function(v)
+    S.M2PickupCrystals = v == true
+end
+
+KNOWN_TOGGLES.M2PkRunes = function(v)
+    S.M2PickupRunes = v == true
+end
+
+KNOWN_TOGGLES.AutoFarmBoulders = function(v)
+    S.BoulderLootAssist = v == true
+    if v then
+        notify(
+            "Boulder Farm: coleta automática das runas pós-quebra ativada; " ..
+            "o núcleo de mineração/swing ainda aguarda o binding final.",
+            5
+        )
+    end
+end
+
+KNOWN_OPTIONS.AutoRunePickupMode = function(v)
+    S.AutoRunePickupMode = v
+end
+
+KNOWN_OPTIONS.PkBatch = function(v)
+    local n = tonumber(v)
+    if n then
+        S.PICK.burst = math.clamp(math.floor(n + 0.5), 1, 60)
+    end
+end
+
+KNOWN_OPTIONS.PkDelay = function(v)
+    local n = tonumber(v)
+    if n then
+        S.PICK.cooldown = math.clamp(n / 1000, 0.02, 0.4)
+    end
+end
+
+-- Valores recuperados do payload original.
+UIState.values.PkBatch = UIState.values.PkBatch or S.PICK.burst
+UIState.values.PkDelay = UIState.values.PkDelay or math.floor(S.PICK.cooldown * 1000 + 0.5)
+
+-- Loop compartilhado.
+-- Instant Prompt: raio 60 / tick 0,2 s.
+-- Auto Pickup: raio 25 / cooldown 0,12 s / burst 12.
+-- Auto Rune Pickup Near: raio 20 / até 4 prompts por passo.
+track(RunService.Heartbeat:Connect(function(dt)
+    if S.Destroyed then return end
+
+    S.InstantInteractionClock = S.InstantInteractionClock + dt
+    S.AutoPickupClock = S.AutoPickupClock + dt
+    S.RunePickupClock = S.RunePickupClock + dt
+
+    if S.AutoPickupCore and S.AutoPickupClock >= S.PICK.cooldown then
+        S.AutoPickupClock = 0
+        collectCrystalsBurst(S.PICK.range, S.PICK.burst, false)
+    end
+
+    if (S.InstantPrompt or S.M2InstantPickup) and S.InstantInteractionClock >= S.PICK.instantTick then
+        S.InstantInteractionClock = 0
+        collectCrystalsBurst(S.PICK.instantRadius, S.PICK.burst, true)
+
+        -- O modo M2 instantâneo também coleta runas próximas pelo mesmo
+        -- ProximityPrompt centralizado.
+        if S.M2InstantPickup then
+            collectRunesNear(S.PICK.instantRadius, 4, true)
+        end
+    end
+
+    if S.RunePickupClock >= 0.2 then
+        S.RunePickupClock = 0
+
+        if S.AutoRunePickup then
+            if modeContains(S.AutoRunePickupMode, "Near") or modeContains(S.AutoRunePickupMode, "Both") then
+                collectRunesNear(20, 4, true)
+            end
+        end
+
+        if S.M2PickupRunes then
+            collectRunesNear(20, 4, true)
+        end
+
+        if S.M2PickupCrystals then
+            collectCrystalsBurst(S.PICK.range, S.PICK.burst, true)
+        end
+
+        -- Integração direta com a fase de loot do Boulder Farm.
+        -- Mesmo sem o swing completo ainda, se uma pedra for quebrada e
+        -- soltar runas, o toggle do Boulder Farm já recolhe o loot automaticamente.
+        if S.BoulderLootAssist then
+            collectRunesNear(20, 4, true)
+        end
+    end
+end))
+
+notify("Núcleo de interação instantânea e coleta compartilhada carregado.", 4)
