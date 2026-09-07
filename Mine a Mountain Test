@@ -1,10 +1,12 @@
 -- Mine a Mountain 2 — Standalone Reconstruction V3 PT-BR
 -- Entrada principal. A fonte completa está dividida em blocos no mesmo repositório
--- apenas para preservar integralmente o código durante a gravação pelo conector.
+-- para preservar integralmente o código durante a gravação pelo conector.
+-- Os blocos 01-08 contêm a interface/funções reconstruídas; o bloco 09 aplica a
+-- camada final de tradução visual sem alterar IDs internos nem bindings.
 
 local BASE = "https://raw.githubusercontent.com/Psicosenatico/Mine-a-Mountain/main/mam2_v3_parts/"
-local EXPECTED = {9472, 9489, 9469, 9481, 9497, 9500, 9487, 8463}
-local TOTAL_EXPECTED = 74858
+local EXPECTED = {9472, 9489, 9469, 9481, 9497, 9500, 9487, 8463, 4323}
+local TOTAL_EXPECTED = 79181
 
 local parts = table.create(#EXPECTED)
 
