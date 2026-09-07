@@ -1,0 +1,45 @@
+
+-- MAM2_AUDITED_RECOVERED_ACTIONS_V2
+-- Ações locais já suportadas pelos dados existentes.
+local UX=S.AuditV2
+
+-- Watermark e painel de atalhos: funções expostas pelo UI manager original.
+local wm,kp
+local function mkPanel(name,w)local f=Instance.new("Frame");f.Name=name;f.Size=UDim2.fromOffset(w,28);f.AutomaticSize=Enum.AutomaticSize.Y;f.BackgroundColor3=COLORS.Main;f.BackgroundTransparency=.08;f.BorderSizePixel=0;f.ZIndex=9500;f.Parent=gui;corner(f,6);stroke(f,COLORS.Outline,.1);local l=textLabel(f,"",11,false);l.Name="Text";l.Position=UDim2.fromOffset(8,4);l.Size=UDim2.new(1,-16,0,20);l.AutomaticSize=Enum.AutomaticSize.Y;l.TextWrapped=true;return f,l end
+local function updateWM()if not wm then wm=mkPanel("__MAM2_Watermark",270)end;wm.Visible=UIState.values.ShowWatermark~=false;wm.Position=UDim2.fromOffset(tonumber(UIState.values.WatermarkPosX)or 20,tonumber(UIState.values.WatermarkPosY)or 20);local l=wm:FindFirstChild("Text");if l then l.Text="Mine a Mountain 2 | Standalone PT-BR"end end
+KNOWN_TOGGLES.ShowWatermark=function(v)UIState.values.ShowWatermark=v==true;updateWM()end;KNOWN_OPTIONS.WatermarkPosX=function(v)UIState.values.WatermarkPosX=v;updateWM()end;KNOWN_OPTIONS.WatermarkPosY=function(v)UIState.values.WatermarkPosY=v;updateWM()end
+local KL={MenuKeybind="Menu",AutoPickupKey="Coleta",CrystalEspKey="ESP Cristais",misc_noclip_key="Noclip",misc_fly_key="Voar",misc_sprint_key="Corrida",misc_fullbright_key="Iluminação",BlkScrnKey="Tela preta"}
+local function updateKP()if not kp then kp=mkPanel("__MAM2_Keybinds",230)end;kp.Visible=UIState.values.ShowKeybinds==true;kp.Position=UDim2.fromOffset(tonumber(UIState.values.KeybindsPosX)or 504,tonumber(UIState.values.KeybindsPosY)or 246.5);local a={"Atalhos"};for id,n in pairs(KL)do local k=tostring(UIState.values[id]or"None");if k~="None"then a[#a+1]=n..": "..k end end;local l=kp:FindFirstChild("Text");if l then l.Text=table.concat(a,"\n")end end
+KNOWN_TOGGLES.ShowKeybinds=function(v)UIState.values.ShowKeybinds=v==true;updateKP()end;KNOWN_OPTIONS.KeybindsPosX=function(v)UIState.values.KeybindsPosX=v;updateKP()end;KNOWN_OPTIONS.KeybindsPosY=function(v)UIState.values.KeybindsPosY=v;updateKP()end
+task.defer(function()updateWM();updateKP()end);track(RunService.Heartbeat:Connect(function()if kp and kp.Visible then updateKP()end end))
+
+-- Reexecução após teleport usa a própria entrada standalone.
+local QSRC=[[loadstring(game:HttpGet("https://raw.githubusercontent.com/Psicosenatico/Mine-a-Mountain/main/Mine%20a%20Mountain%20Test"))()]]
+KNOWN_TOGGLES.auto_reexec=function(v)if not v then return end;local q=queue_on_teleport or(syn and syn.queue_on_teleport)or(fluxus and fluxus.queue_on_teleport);if type(q)=="function"then local ok=pcall(q,QSRC);if ok then notify("Reexecução após teleporte preparada.",3)end else notify("queue_on_teleport indisponível neste executor.",4)end end
+
+-- Pontos/grade de placement: camada local; o Remote de colocar itens continua pendente.
+UX.place=UX.place or{a=nil,b=nil,h=tonumber(UIState.values.PlacementHeight)or 26,sp=tonumber(UIState.values.GridSpacing)or 4,on=false,parts={}}
+local P=UX.place;local gf=Instance.new("Folder");gf.Name="__MAM2_PlacementGrid";gf.Parent=Workspace
+local function clearGrid()for _,o in ipairs(P.parts)do pcall(function()o:Destroy()end)end;table.clear(P.parts)end
+local function grid()clearGrid();if not P.on or not P.a or not P.b then return end;local ax,bx=math.min(P.a.X,P.b.X),math.max(P.a.X,P.b.X);local az,bz=math.min(P.a.Z,P.b.Z),math.max(P.a.Z,P.b.Z);local sp=math.max(1,P.sp);local n=0;local x=ax;while x<=bx+.01 and n<400 do local z=az;while z<=bz+.01 and n<400 do n=n+1;local o=Instance.new("Part");o.Name="__MAM2_GridPoint";o.Anchored=true;o.CanCollide=false;o.CanTouch=false;o.CanQuery=false;o.Material=Enum.Material.Neon;o.Transparency=.45;o.Color=COLORS.Accent;o.Size=Vector3.new(.35,.08,.35);o.Position=Vector3.new(x,P.h,z);o.Parent=gf;P.parts[#P.parts+1]=o;z=z+sp end;x=x+sp end end
+KNOWN_TOGGLES.ShowPlacementGrid=function(v)P.on=v==true;grid()end;KNOWN_OPTIONS.PlacementHeight=function(v)P.h=tonumber(v)or P.h;if P.on then grid()end end;KNOWN_OPTIONS.GridSpacing=function(v)P.sp=math.max(1,tonumber(v)or P.sp);if P.on then grid()end end
+
+-- Botões que agora têm ação verificável.
+local recovered={["Definir Ponto A"]=true,["Definir Ponto B"]=true,["Redefinir pontos"]=true,["Coletar todos os cristais"]=true,["Coletar todos os cristais do terreno"]=true,["Coletar todas as Runas"]=true}
+local oldPendingA=notifyPending;notifyPending=function(t)if recovered[tostring(t)]then return end;return oldPendingA(t)end
+local function hookButton(t,fn)for _,o in ipairs(gui:GetDescendants())do if o:IsA("TextButton")and o.Text==t then track(o.Activated:Connect(function()local ok,e=pcall(fn);if not ok then notify("Erro em "..t..": "..tostring(e),4)end end))end end end
+hookButton("Definir Ponto A",function()local r=root();if r then P.a=r.Position;if P.on then grid()end;notify("Ponto A definido.",2)end end)
+hookButton("Definir Ponto B",function()local r=root();if r then P.b=r.Position;if P.on then grid()end;notify("Ponto B definido.",2)end end)
+hookButton("Redefinir pontos",function()P.a=nil;P.b=nil;clearGrid();notify("Pontos redefinidos.",2)end)
+hookButton("Coletar todos os cristais",function()if S.CollectCrystalsBurst then local n=S.CollectCrystalsBurst(S.PICK and S.PICK.aimRange or 5000,500,true);notify("Tentativas de coleta: "..tostring(n),3)end end)
+hookButton("Coletar todos os cristais do terreno",function()if S.CollectCrystalsBurst then local n=S.CollectCrystalsBurst(S.PICK and S.PICK.aimRange or 5000,500,true);notify("Tentativas de coleta no terreno: "..tostring(n),3)end end)
+hookButton("Coletar todas as Runas",function()if S.GrabRunesNear then local n=S.GrabRunesNear(5000,500,true);notify("Tentativas de coleta de Runas: "..tostring(n),3)end end)
+
+-- Guarda configurações já identificadas para que deixem de ser opções mortas,
+-- sem fingir que o núcleo servidor oculto (swing/venda/placement) foi resolvido.
+S.PendingConfig=S.PendingConfig or{}
+for _,id in ipairs({"FarmTargets","HopServerMode","BoulderFilter","BoulderStanceDirection","BoulderStanceDistance","ClearTerritoryFor","ClearPasses","ClearSpotsCount","ClearSpreadRadius","ClearGlideSpeed","MoneySellThreshold","SellFreezeSecs","PlacePriorityMode","PlaceBestPriorityMode","PlaceMinMoney","PlaceMinLuck","PlaceMinSize","PlaceInterval","RunePlaceInterval","RunePlaceAtOnce","AutoFavoriteLuck","AutoFavoriteValue","FavRaritySelect"})do if not KNOWN_OPTIONS[id]then KNOWN_OPTIONS[id]=function(v)S.PendingConfig[id]=v end end end
+
+local oldDestroyB=S.Destroy
+S.Destroy=function()clearGrid();pcall(function()gf:Destroy()end);pcall(function()if wm then wm:Destroy()end end);pcall(function()if kp then kp:Destroy()end end);if oldDestroyB then return oldDestroyB()end end
+notify("Auditoria funcional V2 aplicada.",4)
