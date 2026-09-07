@@ -1,7 +1,6 @@
 -- Mine a Mountain 2 — Standalone Reconstruction V3 PT-BR
 -- Entrada principal da reconstrução visual.
--- Os blocos 01-08 contêm a interface/funções reconstruídas e o bloco 09 aplica
--- somente a tradução visual PT-BR, preservando IDs internos e bindings.
+-- Carrega os blocos da fonte e aplica correções estruturais antes da compilação.
 
 local StarterGui = game:GetService("StarterGui")
 
@@ -17,32 +16,17 @@ local function reportError(message)
 end
 
 local BASE = "https://raw.githubusercontent.com/Psicosenatico/Mine-a-Mountain/main/mam2_v3_parts/"
+local PART_COUNT = 9
+local parts = table.create(PART_COUNT)
 
--- Tamanhos conferidos diretamente nos arquivos atuais da branch main.
-local EXPECTED = {9472, 9489, 9469, 9481, 9497, 9500, 9487, 8463, 4239}
-local TOTAL_EXPECTED = 79097
-
-local parts = table.create(#EXPECTED)
-
-for i, expectedBytes in ipairs(EXPECTED) do
+for i = 1, PART_COUNT do
     local url = BASE .. string.format("part%02d.txt", i)
     local ok, body = pcall(function()
         return game:HttpGet(url)
     end)
 
-    if not ok or type(body) ~= "string" then
+    if not ok or type(body) ~= "string" or #body < 256 then
         local msg = string.format("Falha ao carregar o bloco %02d.", i)
-        reportError(msg)
-        error("MAM2 V3: " .. msg)
-    end
-
-    if #body ~= expectedBytes then
-        local msg = string.format(
-            "Bloco %02d incompleto ou diferente (%d/%d bytes).",
-            i,
-            #body,
-            expectedBytes
-        )
         reportError(msg)
         error("MAM2 V3: " .. msg)
     end
@@ -52,15 +36,49 @@ end
 
 local SOURCE = table.concat(parts)
 
-if #SOURCE ~= TOTAL_EXPECTED then
-    local msg = string.format(
-        "Fonte reconstruída incompleta (%d/%d bytes).",
-        #SOURCE,
-        TOTAL_EXPECTED
+-- Validação estrutural por marcadores, sem depender de tamanho exato dos arquivos.
+local REQUIRED = {
+    "local Players = game:GetService(\"Players\")",
+    "local rail = Instance.new(\"Frame\")",
+    "local function destroy()",
+    "Tradução PT-BR completa aplicada à interface.",
+}
+
+for _, marker in ipairs(REQUIRED) do
+    if not SOURCE:find(marker, 1, true) then
+        local msg = "Fonte reconstruída incompleta: marcador ausente."
+        reportError(msg)
+        error("MAM2 V3: " .. msg)
+    end
+end
+
+-- Correção de fidelidade visual:
+-- Na biblioteca original, o TabRail é filho direto da janela externa (Outer),
+-- não da área interna de conteúdo. Como 'inner' começa 8 px para dentro,
+-- manter o rail dentro dele fazia seu limite direito invadir o painel.
+local railPatchCount
+do
+    local patched
+    patched, railPatchCount = SOURCE:gsub(
+        "rail%.Parent = inner",
+        "rail.Parent = main",
+        1
     )
+    SOURCE = patched
+end
+
+if railPatchCount ~= 1 then
+    local msg = "Não foi possível aplicar a correção de posição das abas laterais."
     reportError(msg)
     error("MAM2 V3: " .. msg)
 end
+
+-- Centraliza as células dentro da largura do trilho, como na biblioteca original.
+SOURCE = SOURCE:gsub(
+    "grid%.FillDirectionMaxCells = RAIL_ROWS\ngrid%.SortOrder",
+    "grid.FillDirectionMaxCells = RAIL_ROWS\ngrid.HorizontalAlignment = Enum.HorizontalAlignment.Center\ngrid.SortOrder",
+    1
+)
 
 local fn, compileError = loadstring(SOURCE)
 if not fn then
