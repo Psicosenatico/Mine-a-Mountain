@@ -1,0 +1,181 @@
+g=groupbox(page,"Farm de Dinheiro")
+addDescription(g,"Carrega a montanha e escava do topo para baixo.")
+addToggle(g,"AutoFarmMoney","Farm automático",false)
+addKey(g,"AutoFarmMoneyKey","Atalho","None")
+addToggle(g,"MoneyAutoSell","Venda automática",false)
+addSlider(g,"MoneySellThreshold","Vender em",1,100,50,"%")
+addToggle(g,"SellFreeze","Congelar antes de vender",false)
+addSlider(g,"SellFreezeSecs","Duração do congelamento",1,10,3," s")
+addToggle(g,"MoneyRejoinAfterSell","Reentrar após vender",false)
+addToggle(g,"MoneySellTeleportBack","Voltar após vender",false)
+addLabel(g,"Parado")
+g=groupbox(page,"Runas de Fortuna e Sessão")
+addToggle(g,"MoneyForceRemoveFortuneRune","Forçar remoção da Runa da Fortuna",false)
+addToggle(g,"MoneyPlaceFortuneRune","Colocar Runa da Fortuna antes de vender",false)
+addToggle(g,"CrysStpNoTgt","Parar o farm se não encontrar cristais",false)
+addToggle(g,"CrysHopNoTgt","Trocar de servidor se não encontrar cristais",false)
+addDropdown(g,"CrysHopMode","Modo de troca de servidor",HOP_MODES,"Public",false)
+page=UIState.pages["Boulders"]
+g=groupbox(page,"ESP de Boulders")
+addToggle(g,"BoulderEsp","ESP de Boulders",false)
+addSlider(g,"BoulderEspSize","Tamanho do texto do ESP",25,250,60,"%")
+addDropdown(g,"BoulderFilter","Filtro de Boulders",BOULDERS,BOULDERS,true)
+addToggle(g,"BoulderHighlight","Destaque",true)
+addSlider(g,"BoulderHighlightTransparency","Transparência do destaque",0,100,55,"%")
+g=groupbox(page,"Coleta próxima automática")
+addToggle(g,"AutoNearCollect","Auto Near Collect",false)
+addKey(g,"AutoNearCollectKey","Atalho","None")
+addDescription(g,"Ataca automaticamente um Boulder quando você está perto ou olhando para ele.")
+g=groupbox(page,"ESP de Runas")
+addToggle(g,"RuneEsp","ESP de Runas",false)
+addDropdown(g,"RuneEspMinRarity","Raridades exibidas",RUNE_RARITIES,{
+"1 - Luck / Haste","2 - Storm / Weight","3 - Fortune / Detonation",
+"4 - Preservation / Warmth","5 - Excavator / Colossus"
+},true)
+addToggle(g,"RuneTrc","Linhas de rastreamento",false)
+addColor(g,"RuneTrcClr","Cor das linhas",Color3.fromRGB(0,224,255))
+g=groupbox(page,"Coleta automática de Runas")
+addToggle(g,"AutoRunePickup","Auto Rune Pickup",false)
+addDropdown(g,"AutoRunePickupMode","Modo de coleta",{
+{label="Perto",value="Near"},{label="Teleporte",value="Teleport"},{label="Ambos",value="Both"}
+},{"Near"},true)
+g=groupbox(page,"Boulder Farm")
+addDescription(g,"Especializado em farm de runas.")
+addDropdown(g,"FarmTargets","Alvos",BOULDERS,{"Nocturnite"},true)
+addToggle(g,"AutoFarmBoulders","Farm automático",false)
+addKey(g,"AutoFarmBouldersKey","Atalho","None")
+addToggle(g,"HopOnNoBoulders","Trocar servidor se não encontrar Boulders",false)
+addToggle(g,"StuckHop","Trocar servidor se travar",false)
+addSlider(g,"StuckHopMinutes","Tempo limite travado",1,60,10," min")
+addDropdown(g,"HopServerMode","Modo da troca de servidor",HOP_MODES,"Public",false)
+addLabel(g,"Parado")
+g=groupbox(page,"Configurações do Boulder Farm")
+addDropdown(g,"BoulderStanceDirection","Direção da posição",DIRS,"Down",false)
+addSlider(g,"BoulderStanceDistance","Distância da posição",-10,25,5," studs")
+addLabel(g,"Limpeza de território")
+addDropdown(g,"ClearTerritoryFor","Limpar território para",BOULDERS,{},true)
+addSlider(g,"ClearPasses","Passadas de limpeza",1,12,1,"")
+addSlider(g,"ClearSpotsCount","Quantidade de pontos",2,40,20," pontos")
+addSlider(g,"ClearSpreadRadius","Espalhamento da limpeza",1,10000,14," studs")
+addSlider(g,"ClearGlideSpeed","Velocidade durante a limpeza",50,2500,500," studs/s")
+page=UIState.pages["Plots"]
+g=groupbox(page,"Posicionador automático")
+addLabel(g,"Posição de colocação")
+addLabel(g,"Cristais colocados: 0 / 0")
+addToggle(g,"AutoPlaceCrystals","Colocar cristais automaticamente",false)
+addKey(g,"AutoPlaceCrystalsKey","Atalho","None")
+addDropdown(g,"PlacePriorityMode","Priorizar cristais por",PRIORITY,"Most Cost",false)
+addToggle(g,"AutoPlaceCrystalsBest","Colocar melhores cristais automaticamente",false)
+addKey(g,"AutoPlaceCrystalsBestKey","Atalho","None")
+addDropdown(g,"PlaceBestPriorityMode","Priorizar melhores por",PRIORITY,"Most Cost",false)
+addButton(g,"Organizar terreno instantaneamente")
+addToggle(g,"HideSortNotifications","Ocultar notificações do cooldown de organização",true)
+addSlider(g,"PlaceMinMoney","Dinheiro mínimo",0,1000000,0," $")
+addSlider(g,"PlaceMinLuck","Luck mínimo",0,1000,0,"%")
+addSlider(g,"PlaceMinSize","Tamanho mínimo (peso)",0,500,0," kg")
+addSlider(g,"PlaceInterval","Velocidade de colocação",0.01,5,0.05," s")
+addLabel(g,"Área de colocação (2 pontos)")
+addLabel(g,"Ponto A: Não definido")
+addLabel(g,"Ponto B: Não definido")
+addButton(g,"Definir Ponto A")
+addButton(g,"Definir Ponto B")
+addButton(g,"Redefinir pontos")
+addSlider(g,"PlacementHeight","Altura de colocação (Y)",0,50,26," studs")
+addSlider(g,"GridSpacing","Espaçamento da grade",1,10,4," studs")
+addToggle(g,"ShowPlacementGrid","Mostrar grade de colocação",false)
+addButton(g,"Coletar todos os cristais do terreno")
+g=groupbox(page,"Runas")
+addDescription(g,"Coloca ferramentas de Runa nos pontos da grade de colocação.")
+addDropdown(g,"RuneSelect","Runa a colocar",{{label="Todas as Runas",value="All Runes"}},"All Runes",false)
+addButton(g,"Atualizar Runas")
+addButton(g,"Colocar Runas agora")
+addToggle(g,"AutoPlaceRunes","Colocar Runas automaticamente",false)
+addKey(g,"AutoPlaceRunesKey","Atalho","None")
+addSlider(g,"RunePlaceInterval","Velocidade de colocação das Runas",0.01,5,0.05," s")
+addSlider(g,"RunePlaceAtOnce","Runas por lote",1,20,1,"")
+addButton(g,"Coletar todas as Runas")
+addLabel(g,"Runas na mochila: 0")
+g=groupbox(page,"Capacidade do terreno")
+addLabel(g,"Capacidade: 100 (MÁX)")
+addButton(g,"Comprar [MÁX]")
+addToggle(g,"AutoPlotCapacity","Comprar capacidade automaticamente",false)
+page=UIState.pages["Teleports"]
+g=groupbox(page,"Melhores Cristais")
+for _,name in ipairs({
+"Top 1 por Valor","Top 2 por Valor","Top 3 por Valor",
+"Top 1 por Luck","Top 2 por Luck","Top 3 por Luck",
+"Top 1 por Peso","Top 2 por Peso","Top 3 por Peso",
+}) do addButton(g,name) end
+g=groupbox(page,"Teleporte por Mira")
+addToggle(g,"AimTeleport","Aim Teleport",false)
+addKey(g,"AimTeleportKey","Atalho","None")
+addDescription(g,"Teleporta até o minério apontado pela mira/mouse.")
+g=groupbox(page,"Teleportes")
+addButton(g,"Ir para Casa")
+addButton(g,"Teleportar para o Spawn")
+addButton(g,"Vender tudo")
+page=UIState.pages["Shops"]
+g=groupbox(page,"Loja de Bombas")
+addLabel(g,"Estoque é renovado a cada hora.")
+addDropdown(g,"BombSelect","Bombas para comprar",{
+{label="Bomba Clássica",value="Classic Bomb"},
+{label="Bomba de Vento",value="Wind Bomb"},
+{label="Bomba de Gelo",value="Ice Bomb"},
+{label="Bomba de Fogo",value="Fire Bomb"},
+{label="Bomba de Trovão",value="Thunder Bomb"},
+{label="Bomba de Veneno",value="Poison Bomb"},
+{label="Bomba de Tempo",value="Time Bomb"},
+{label="Bomba da Agonia",value="Agony Bomb"},
+},{},true)
+addButton(g,"Selecionar todas")
+addToggle(g,"AutoBuyBomb","Comprar automaticamente (selecionadas)",false)
+addSlider(g,"BombTargetStock","Estoque alvo de Bombas",1,100,20,"")
+addToggle(g,"AutoBuyBombReplenish","Compra automática para reposição",false)
+addButton(g,"Comprar uma vez (todas selecionadas)")
+addButton(g,"Atualizar estoque")
+g=groupbox(page,"Loja de Radares")
+addDropdown(g,"RadarSelect","Radares para comprar",{
+{label="Veia Prismática",value="Prismatic Vein"},
+{label="Radar de Cristal",value="Crystal Radar"},
+{label="Radar de Caverna",value="Cave Radar"},
+{label="Radar de Lava",value="Lava Radar"},
+{label="Radar de Veias de Bomba",value="Bombveins Radar"},
+{label="Radar de Aetherstone",value="Aetherstone Radar"},
+{label="Radar de Boulder",value="Boulder Radar"},
+},{},true)
+addToggle(g,"AutoBuyRadar","Comprar automaticamente (selecionados)",false)
+addSlider(g,"RadarTargetStock","Estoque alvo de Radares",1,100,10,"")
+addToggle(g,"AutoBuyRadarReplenish","Compra automática para reposição",false)
+addButton(g,"Comprar uma vez (todos selecionados)")
+addButton(g,"Atualizar estoque")
+g=groupbox(page,"Loja de Picaretas")
+addDropdown(g,"PickaxeMode","Modo de compra",PICK_MODES,"Sequence",false)
+addToggle(g,"AutoBuyPickaxe","Comprar Picaretas automaticamente",false)
+g=groupbox(page,"Melhorias")
+addLabel(g,"Capacidade de carga")
+addButton(g,"+1kg")
+addButton(g,"+5kg")
+addButton(g,"+10kg")
+addLabel(g,"Calor / Ar")
+addButton(g,"+10")
+addButton(g,"+50")
+addButton(g,"+100")
+addToggle(g,"AutoUpgradeWeight","Melhorar capacidade automaticamente",false)
+addDropdown(g,"AutoUpgradeWeightTier","Nível da capacidade",{
+{label="Carga +1kg",value="Carry +1kg"},{label="Carga +5kg",value="Carry +5kg"},
+{label="Carga +10kg",value="Carry +10kg"},
+},"Carry +1kg",false)
+addToggle(g,"AutoUpgradeAir","Melhorar Calor / Ar automaticamente",false)
+addDropdown(g,"AutoUpgradeAirTier","Nível de Calor / Ar",{
+{label="Calor +10",value="Warmth +10"},{label="Calor +50",value="Warmth +50"},
+{label="Calor +100",value="Warmth +100"},
+},"Warmth +10",false)
+page=UIState.pages["Misc"]
+g=groupbox(page,"Movimentação")
+addToggle(g,"misc_walkspeed_enabled","Velocidade de caminhada",false)
+addKey(g,"misc_walkspeed_key","Atalho","None")
+addSlider(g,"misc_walkspeed_value","WalkSpeed",0,200,16,"")
+addToggle(g,"misc_sprint","Corrida",false)
+addKey(g,"misc_sprint_key","Atalho","LeftShift")
+addSlider(g,"misc_sprint_speed","Velocidade da corrida",16,200,60,"")
+addToggle(g,"misc_jump_power_enabled","Força do pulo",false)
