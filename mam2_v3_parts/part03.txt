@@ -1,0 +1,284 @@
+misc_disable_crystals_glow = function(v)
+S.DisableCrystalsGlow = v
+if v then
+rescanWorldVisuals()
+elseif not S.OptimizeCrystals then
+restoreGlow()
+end
+end,
+misc_optimize_crystals = function(v)
+S.OptimizeCrystals = v
+if v then
+rescanWorldVisuals()
+elseif not S.DisableCrystalsGlow then
+restoreGlow()
+end
+end,
+}
+local KNOWN_OPTIONS = {
+misc_transparent_textures_value = function(v)
+v = tonumber(v)
+if v then
+S.TextureTransparency = math.clamp(v, 0, 1)
+if S.TransparentTextures then rescanWorldVisuals() end
+end
+end,
+}
+local function setControlValue(id, value, silent)
+UIState.values[id] = value
+local fn = KNOWN_TOGGLES[id] or KNOWN_OPTIONS[id]
+if fn then
+pcall(fn, value)
+elseif not silent then
+notifyPending(id)
+end
+end
+local vp = Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize or Vector2.new(800,600)
+local widthPx = math.clamp(math.floor(vp.X * 0.55), 300, 560)
+local heightPx = math.clamp(math.floor(vp.Y * 0.55), 220, 330)
+local TAB_SIZE = 43
+local TAB_GAP = 8
+local RAIL_COLS = 2
+local RAIL_ROWS = 4
+local SIDEBAR_SLACK = 9
+local SIDEBAR_W = RAIL_COLS * TAB_SIZE + (RAIL_COLS - 1) * TAB_GAP + SIDEBAR_SLACK
+local RAIL_SPAN = SIDEBAR_W + 2
+local TOPBAR_H = 33
+local TOPBAR_GAP = 8
+local main = Instance.new("Frame")
+main.Name = "MainWindow"
+main.AnchorPoint = Vector2.new(0.5,0.5)
+main.Position = UDim2.new(0.5, math.floor(RAIL_SPAN/2), 0.5, 0)
+main.Size = UDim2.fromOffset(widthPx, heightPx)
+main.BackgroundColor3 = COLORS.Main
+main.BorderSizePixel = 0
+main.Parent = gui
+corner(main, 8)
+stroke(main, COLORS.Outline, 0)
+local topbar = Instance.new("Frame")
+topbar.Name = "TopBar"
+topbar.Position = UDim2.new(0, -RAIL_SPAN, 0, -(TOPBAR_H + TOPBAR_GAP))
+topbar.Size = UDim2.new(1, RAIL_SPAN, 0, TOPBAR_H)
+topbar.BackgroundColor3 = Color3.fromRGB(5,5,7)
+topbar.BackgroundTransparency = 0.06
+topbar.BorderSizePixel = 0
+topbar.Active = true
+topbar.Parent = main
+corner(topbar, 10)
+stroke(topbar, Color3.new(1,1,1), 0.86)
+local topIcon = Instance.new("ImageLabel")
+topIcon.Name = "TopBarIcon"
+topIcon.AnchorPoint = Vector2.new(0,0.5)
+topIcon.BackgroundColor3 = Color3.fromRGB(60,140,70)
+topIcon.BorderSizePixel = 0
+topIcon.Position = UDim2.new(0,6,0.5,0)
+topIcon.Size = UDim2.fromOffset(20,20)
+topIcon.Parent = topbar
+corner(topIcon, 10)
+task.spawn(function()
+pcall(function()
+topIcon.Image = Players:GetUserThumbnailAsync(
+LP.UserId,
+Enum.ThumbnailType.HeadShot,
+Enum.ThumbnailSize.Size48x48
+)
+end)
+end)
+local topTitle = textLabel(topbar, "Mine a Mountain 2  |  Versão reconstruída", 11, true)
+topTitle.Position = UDim2.fromOffset(32,0)
+topTitle.Size = UDim2.new(1,-42,1,0)
+topTitle.TextTruncate = Enum.TextTruncate.AtEnd
+local headerBar=Instance.new("Frame")
+headerBar.Name="Header"
+headerBar.Position=UDim2.fromOffset(8,7)
+headerBar.Size=UDim2.new(1,-16,0,34)
+headerBar.BackgroundTransparency=1
+headerBar.Parent=main
+local headerName=textLabel(headerBar,"MAM2",14,true)
+headerName.Position=UDim2.fromOffset(4,0)
+headerName.Size=UDim2.fromOffset(55,34)
+local headerDivider=textLabel(headerBar,"|",12,false)
+headerDivider.Position=UDim2.fromOffset(58,0)
+headerDivider.Size=UDim2.fromOffset(10,34)
+headerDivider.TextColor3=Color3.fromRGB(114,114,114)
+local headerTime=textLabel(headerBar,"Tempo: Standalone",10,false)
+headerTime.Position=UDim2.fromOffset(70,0)
+headerTime.Size=UDim2.new(1,-265,0,34)
+headerTime.TextColor3=COLORS.Muted
+local searchBox=Instance.new("TextBox")
+searchBox.AnchorPoint=Vector2.new(1,.5)
+searchBox.Position=UDim2.new(1,-38,.5,0)
+searchBox.Size=UDim2.fromOffset(170,25)
+searchBox.BackgroundColor3=Color3.fromRGB(14,14,16)
+searchBox.BorderSizePixel=0
+searchBox.Font=Enum.Font.Code
+searchBox.TextSize=10
+searchBox.TextColor3=COLORS.Font
+searchBox.PlaceholderColor3=Color3.fromRGB(90,90,95)
+searchBox.PlaceholderText="Pesquisar..."
+searchBox.Text=""
+searchBox.ClearTextOnFocus=false
+searchBox.Parent=headerBar
+corner(searchBox,6)
+stroke(searchBox,COLORS.Outline,0.15)
+local lockButton=Instance.new("ImageButton")
+lockButton.AnchorPoint=Vector2.new(1,.5)
+lockButton.Position=UDim2.new(1,-4,.5,0)
+lockButton.Size=UDim2.fromOffset(26,26)
+lockButton.BackgroundTransparency=1
+lockButton.Image="rbxassetid://110263656507369"
+lockButton.ImageColor3=COLORS.Font
+lockButton.Parent=headerBar
+local inner = Instance.new("Frame")
+inner.Position = UDim2.fromOffset(8,45)
+inner.Size = UDim2.new(1,-16,1,-53)
+inner.BackgroundColor3 = COLORS.Background
+inner.BorderSizePixel = 0
+inner.Parent = main
+corner(inner, 8)
+stroke(inner, COLORS.Outline, 0)
+local tabContainer = Instance.new("Frame")
+tabContainer.Position = UDim2.fromOffset(8,8)
+tabContainer.Size = UDim2.new(1,-16,1,-16)
+tabContainer.BackgroundColor3 = COLORS.Main
+tabContainer.BorderSizePixel = 0
+tabContainer.Parent = inner
+corner(tabContainer, 8)
+stroke(tabContainer, COLORS.Outline, 0)
+local rail = Instance.new("Frame")
+rail.Name = "TabRail"
+rail.Position = UDim2.new(0,-RAIL_SPAN,0,0)
+rail.Size = UDim2.new(0,SIDEBAR_W,1,0)
+rail.BackgroundTransparency = 1
+rail.Parent = inner
+local grid = Instance.new("UIGridLayout")
+grid.CellSize = UDim2.fromOffset(TAB_SIZE,TAB_SIZE)
+grid.CellPadding = UDim2.fromOffset(TAB_GAP,TAB_GAP)
+grid.FillDirection = Enum.FillDirection.Vertical
+grid.FillDirectionMaxCells = RAIL_ROWS
+grid.SortOrder = Enum.SortOrder.LayoutOrder
+grid.Parent = rail
+local tooltip = Instance.new("TextLabel")
+tooltip.Name = "TabTooltip"
+tooltip.Visible = false
+tooltip.BackgroundColor3 = Color3.fromRGB(8,8,10)
+tooltip.BorderSizePixel = 0
+tooltip.Font = Enum.Font.Gotham
+tooltip.TextSize = 11
+tooltip.TextColor3 = COLORS.Font
+tooltip.AutomaticSize = Enum.AutomaticSize.XY
+tooltip.ZIndex = 100
+tooltip.Parent = gui
+corner(tooltip,6)
+stroke(tooltip,Color3.new(1,1,1),0.85)
+local tipPad = Instance.new("UIPadding")
+tipPad.PaddingLeft=UDim.new(0,7);tipPad.PaddingRight=UDim.new(0,7)
+tipPad.PaddingTop=UDim.new(0,4);tipPad.PaddingBottom=UDim.new(0,4)
+tipPad.Parent=tooltip
+local TAB_DEFS = {
+{id="Main", label="Principal", icon="rbxassetid://109841253338329"},
+{id="Crystals", label="Cristais", icon="rbxassetid://127234874352422"},
+{id="Boulders", label="Boulders", icon="rbxassetid://7733774602"},
+{id="Plots", label="Terrenos", icon="rbxassetid://7733960981"},
+{id="Teleports", label="Teleportes", icon="rbxassetid://7743872758"},
+{id="Shops", label="Lojas", icon="rbxassetid://7734056813"},
+{id="Misc", label="Diversos", icon="rbxassetid://106205298246017"},
+{id="UI Settings", label="Configurações da UI", icon="rbxassetid://109485777305919"},
+}
+local function selectTab(id)
+for k,p in pairs(UIState.pages) do p.Visible = (k==id) end
+for k,b in pairs(UIState.tabButtons) do
+b.BackgroundColor3 = (k==id) and COLORS.TileSelected or COLORS.Tile
+local st=b:FindFirstChild("TabStroke")
+if st then
+st.Color=(k==id) and COLORS.Accent or Color3.new(1,1,1)
+st.Transparency=(k==id) and 0.15 or 0.86
+end
+end
+UIState.activeTab=id
+end
+local function createTab(def, order)
+local b=Instance.new("TextButton")
+b.Name=def.id
+b.LayoutOrder=order
+b.Size=UDim2.fromOffset(TAB_SIZE,TAB_SIZE)
+b.BackgroundColor3=COLORS.Tile
+b.BackgroundTransparency=0.12
+b.BorderSizePixel=0
+b.Text=""
+b.AutoButtonColor=false
+b.Parent=rail
+corner(b,13)
+local st=stroke(b,Color3.new(1,1,1),0.86)
+st.Name="TabStroke"
+local img=Instance.new("ImageLabel")
+img.AnchorPoint=Vector2.new(.5,.5)
+img.Position=UDim2.fromScale(.5,.5)
+img.Size=UDim2.fromOffset(22,22)
+img.BackgroundTransparency=1
+img.Image=def.icon
+img.ImageColor3=COLORS.Font
+img.Parent=b
+b.MouseEnter:Connect(function()
+tooltip.Text=def.label
+tooltip.Position=UDim2.fromOffset(b.AbsolutePosition.X+b.AbsoluteSize.X+7,b.AbsolutePosition.Y+8)
+tooltip.Visible=true
+end)
+b.MouseLeave:Connect(function() tooltip.Visible=false end)
+b.Activated:Connect(function() tooltip.Visible=false;selectTab(def.id) end)
+local page=Instance.new("ScrollingFrame")
+page.Name=def.id.."Page"
+page.Position=UDim2.fromOffset(7,7)
+page.Size=UDim2.new(1,-14,1,-14)
+page.BackgroundTransparency=1
+page.BorderSizePixel=0
+page.ScrollBarThickness=4
+page.ScrollBarImageColor3=COLORS.Accent
+page.AutomaticCanvasSize=Enum.AutomaticSize.Y
+page.CanvasSize=UDim2.new()
+page.Visible=false
+page.Parent=tabContainer
+local layout=Instance.new("UIListLayout")
+layout.Padding=UDim.new(0,7)
+layout.SortOrder=Enum.SortOrder.LayoutOrder
+layout.Parent=page
+local pad=Instance.new("UIPadding")
+pad.PaddingRight=UDim.new(0,4)
+pad.PaddingBottom=UDim.new(0,8)
+pad.Parent=page
+UIState.tabButtons[def.id]=b
+UIState.pages[def.id]=page
+return page
+end
+for i,def in ipairs(TAB_DEFS) do createTab(def,i) end
+local openedDropdown
+local function groupbox(page, title)
+local outer=Instance.new("Frame")
+outer.Size=UDim2.new(1,-2,0,30)
+outer.AutomaticSize=Enum.AutomaticSize.Y
+outer.BackgroundColor3=COLORS.Background
+outer.BorderSizePixel=0
+outer.Parent=page
+corner(outer,6)
+stroke(outer,COLORS.Outline,0)
+local header=Instance.new("TextButton")
+header.Size=UDim2.new(1,0,0,27)
+header.BackgroundTransparency=1
+header.BorderSizePixel=0
+header.Text=""
+header.AutoButtonColor=false
+header.Parent=outer
+local titleL=textLabel(header,title,12,true)
+titleL.Position=UDim2.fromOffset(9,0)
+titleL.Size=UDim2.new(1,-38,1,0)
+local arrow=textLabel(header,"▼",11,true)
+arrow.AnchorPoint=Vector2.new(1,0)
+arrow.Position=UDim2.new(1,-8,0,0)
+arrow.Size=UDim2.fromOffset(24,27)
+arrow.TextXAlignment=Enum.TextXAlignment.Center
+local holder=Instance.new("Frame")
+holder.Position=UDim2.fromOffset(6,30)
+holder.Size=UDim2.new(1,-12,0,0)
+holder.AutomaticSize=Enum.AutomaticSize.Y
+holder.BackgroundTransparency=1
+holder.Parent=outer
