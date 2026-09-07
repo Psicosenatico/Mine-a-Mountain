@@ -431,4 +431,19 @@ track(RunService.Heartbeat:Connect(function(dt)
     end
 end))
 
+-- Garante restauração de HoldDuration e desligamento dos estados novos no unload.
+local previousDestroy = S.Destroy
+S.Destroy = function()
+    S.AutoPickupCore = false
+    S.AutoRunePickup = false
+    S.M2InstantPickup = false
+    S.M2PickupCrystals = false
+    S.M2PickupRunes = false
+    S.BoulderLootAssist = false
+    setInstantPromptCore(false)
+    if previousDestroy then
+        return previousDestroy()
+    end
+end
+
 notify("Núcleo de interação instantânea e coleta compartilhada carregado.", 4)
