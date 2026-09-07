@@ -1,12 +1,26 @@
 -- Mine a Mountain 2 — Standalone Reconstruction V3 PT-BR
--- Entrada principal. A fonte completa está dividida em blocos no mesmo repositório
--- para preservar integralmente o código durante a gravação pelo conector.
--- Os blocos 01-08 contêm a interface/funções reconstruídas; o bloco 09 aplica a
--- camada final de tradução visual sem alterar IDs internos nem bindings.
+-- Entrada principal da reconstrução visual.
+-- Os blocos 01-08 contêm a interface/funções reconstruídas e o bloco 09 aplica
+-- somente a tradução visual PT-BR, preservando IDs internos e bindings.
+
+local StarterGui = game:GetService("StarterGui")
+
+local function reportError(message)
+    warn("[MAM2 V3] " .. tostring(message))
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = "MAM2 V3 - Erro de inicialização",
+            Text = tostring(message),
+            Duration = 10,
+        })
+    end)
+end
 
 local BASE = "https://raw.githubusercontent.com/Psicosenatico/Mine-a-Mountain/main/mam2_v3_parts/"
-local EXPECTED = {9472, 9489, 9469, 9481, 9497, 9500, 9487, 8463, 4323}
-local TOTAL_EXPECTED = 79181
+
+-- Tamanhos conferidos diretamente nos arquivos atuais da branch main.
+local EXPECTED = {9472, 9489, 9469, 9481, 9497, 9500, 9487, 8463, 4239}
+local TOTAL_EXPECTED = 79097
 
 local parts = table.create(#EXPECTED)
 
@@ -17,14 +31,20 @@ for i, expectedBytes in ipairs(EXPECTED) do
     end)
 
     if not ok or type(body) ~= "string" then
-        error(string.format("MAM2 V3: falha ao carregar o bloco %02d", i))
+        local msg = string.format("Falha ao carregar o bloco %02d.", i)
+        reportError(msg)
+        error("MAM2 V3: " .. msg)
     end
 
     if #body ~= expectedBytes then
-        error(string.format(
-            "MAM2 V3: bloco %02d incompleto (%d/%d bytes)",
-            i, #body, expectedBytes
-        ))
+        local msg = string.format(
+            "Bloco %02d incompleto ou diferente (%d/%d bytes).",
+            i,
+            #body,
+            expectedBytes
+        )
+        reportError(msg)
+        error("MAM2 V3: " .. msg)
     end
 
     parts[i] = body
@@ -33,15 +53,27 @@ end
 local SOURCE = table.concat(parts)
 
 if #SOURCE ~= TOTAL_EXPECTED then
-    error(string.format(
-        "MAM2 V3: fonte incompleta (%d/%d bytes)",
-        #SOURCE, TOTAL_EXPECTED
-    ))
+    local msg = string.format(
+        "Fonte reconstruída incompleta (%d/%d bytes).",
+        #SOURCE,
+        TOTAL_EXPECTED
+    )
+    reportError(msg)
+    error("MAM2 V3: " .. msg)
 end
 
-local fn, err = loadstring(SOURCE)
+local fn, compileError = loadstring(SOURCE)
 if not fn then
-    error("MAM2 V3: erro ao compilar a fonte reconstruída: " .. tostring(err))
+    local msg = "Erro ao compilar a fonte reconstruída: " .. tostring(compileError)
+    reportError(msg)
+    error("MAM2 V3: " .. msg)
 end
 
-return fn()
+local ok, runtimeError = pcall(fn)
+if not ok then
+    local msg = "Erro durante a inicialização da interface: " .. tostring(runtimeError)
+    reportError(msg)
+    error("MAM2 V3: " .. msg)
+end
+
+return true
