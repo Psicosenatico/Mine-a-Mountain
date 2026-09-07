@@ -16,7 +16,7 @@ local function reportError(message)
 end
 
 local BASE = "https://raw.githubusercontent.com/Psicosenatico/Mine-a-Mountain/main/mam2_v3_parts/"
-local PART_COUNT = 10
+local PART_COUNT = 11
 local parts = table.create(PART_COUNT)
 
 for i = 1, PART_COUNT do
@@ -43,6 +43,7 @@ local REQUIRED = {
     "local function destroy()",
     "Tradução PT-BR completa aplicada à interface.",
     "MAM2_INSTANT_INTERACTION_CORE_V1",
+    "MAM2_RECOVERED_CLIENT_BINDINGS_V1",
 }
 
 for _, marker in ipairs(REQUIRED) do
