@@ -1,0 +1,107 @@
+-- Camada final de tradução visual PT-BR.
+-- Não altera IDs, valores enviados ao jogo nem nomes internos usados pelos bindings.
+local PTBR_EXACT = {
+    ["None"]="Nenhum",
+    ["Auto Favorite"]="Favoritar Automaticamente",
+    ["Auto Near Collect"]="Coleta Próxima Automática",
+    ["Auto Rune Pickup"]="Coleta Automática de Runas",
+    ["Aim Teleport"]="Teleporte por Mira",
+    ["Player Dupe Nuker"]="Duplicador do Jogador",
+    ["WalkSpeed"]="Velocidade de caminhada",
+    ["Jump Power"]="Força do pulo",
+    ["Noclip"]="Atravessar paredes",
+    ["God Mode"]="Modo Deus",
+    ["Anti AFK"]="Anti-inatividade",
+    ["Default"]="Padrão",
+    ["Public"]="Público",
+    ["Lowest Server"]="Servidor com menos jogadores",
+    ["Ultra Fast"]="Ultra rápido",
+    ["Fast"]="Rápido",
+    ["Crystals"]="Cristais",
+    ["Runes"]="Runas",
+    ["All Runes"]="Todas as Runas",
+    ["Mobile"]="Celular",
+}
+local PTBR_PHRASES = {
+    {"Luck mínimo","Sorte mínima"},
+    {"Luck de drop","Sorte do drop"},
+    {"por Luck","por Sorte"},
+    {"Luck %","Sorte %"},
+    {"FPS Boost","melhorar FPS"},
+    {"cooldown","tempo de espera"},
+    {"Cooldown","Tempo de espera"},
+    {"UI do Roblox","interface do Roblox"},
+    {"posição da UI","posição da interface"},
+    {"Escala da UI","Escala da interface"},
+    {"UI desnecessária","interface desnecessária"},
+    {"(Mobile)","(Celular)"},
+    {"farm de runas","coleta de runas"},
+    {"Auto Favorite","Favoritar Automaticamente"},
+    {"Auto Place Best","Colocação Automática dos Melhores"},
+    {"Auto Pickup","Coleta Automática"},
+    {"Auto Sell","Venda Automática"},
+    {"Teleport Back","Voltar Após a Venda"},
+    {"Server Hop","Troca de Servidor"},
+    {"Rejoin After Sell","Reentrar Após a Venda"},
+    {"Freeze Before Sell","Congelar Antes de Vender"},
+    {"Pickup Batch","Lote de Coleta"},
+    {"Pickup Delay","Atraso de Coleta"},
+    {"Show Dig Zones","Mostrar Zonas de Escavação"},
+    {"Auto Buy","Compra Automática"},
+    {"Auto Upgrade","Melhoria Automática"},
+    {"Fortune Runes & Session","Runas da Fortuna e Sessão"},
+    {"Stop Auto Farm If No Crystals Found","Parar Automação se Não Encontrar Cristais"},
+    {"Auto Placer","Colocador Automático"},
+    {"Force Remove Fortune Rune","Forçar Remoção da Runa da Fortuna"},
+    {"Instant Prompt","Interação Instantânea"},
+    {"Instant Take","Coleta Instantânea"},
+    {"Camera Noclip","Câmera sem Colisão"},
+    {"Crystal ESP","ESP de Cristais"},
+    {"Boulder Farm","Farm de Boulders"},
+}
+local function ptbrText(value)
+    if type(value)~="string" or value=="" then return value end
+    local exact=PTBR_EXACT[value]
+    if exact then return exact end
+    local out=value
+    for _,pair in ipairs(PTBR_PHRASES) do
+        out=out:gsub(pair[1],pair[2])
+    end
+    return out
+end
+local translating=setmetatable({},{__mode="k"})
+local function translateObject(obj)
+    if not obj or not obj.Parent then return end
+    if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+        if not translating[obj] then
+            translating[obj]=true
+            pcall(function() obj.Text=ptbrText(obj.Text) end)
+            if obj:IsA("TextBox") then
+                pcall(function() obj.PlaceholderText=ptbrText(obj.PlaceholderText) end)
+            end
+            translating[obj]=nil
+        end
+    end
+end
+for _,obj in ipairs(gui:GetDescendants()) do translateObject(obj) end
+track(gui.DescendantAdded:Connect(function(obj)
+    task.defer(function()
+        translateObject(obj)
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+            track(obj:GetPropertyChangedSignal("Text"):Connect(function()
+                if translating[obj] then return end
+                local translated=ptbrText(obj.Text)
+                if translated~=obj.Text then
+                    translating[obj]=true
+                    obj.Text=translated
+                    translating[obj]=nil
+                end
+            end))
+        end
+    end)
+end))
+pcall(function()
+    topTitle.Text="Mine a Mountain 2  |  Versão reconstruída em português"
+    headerTime.Text="Tempo: Independente"
+end)
+notify("Tradução PT-BR completa aplicada à interface.",4)
