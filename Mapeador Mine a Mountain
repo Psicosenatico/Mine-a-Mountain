@@ -1,667 +1,1552 @@
 --[[
-Mine a Mountain 2 - Mapeador Runtime de Reconstrucao V2.1
+Mine a Mountain 2 - Mapeador Runtime Detalhado V3
 
-Fluxo:
-1) Execute este mapeador.
-2) Toque "Iniciar mapeamento".
-3) Execute o Mine a Mountain 2 original e autentique normalmente.
-4) Antes de testar cada grupo, toque no marcador correspondente.
-5) Use a funcao por alguns segundos.
-6) Repita para os grupos necessarios.
-7) Toque "Inspecionar internos".
-8) Toque "Finalizar e salvar".
+OBJETIVO
+-------
+Este mapeador foi redesenhado para mapear os bindings do menu original já carregado,
+em vez de tratar cada recurso como uma função desconhecida isolada.
 
-Nao captura HttpGet/request, corpo de autenticacao ou key.
-Saida: MAM2_RECON_RUNTIME_Sxx.txt
+Fluxo recomendado:
+1) Entre em uma sessão limpa do jogo.
+2) Execute este mapeador.
+3) Toque "Iniciar mapeamento".
+4) Execute o Mine a Mountain 2 original e autentique normalmente.
+5) Quando o menu original abrir, toque "Atualizar controles do menu original".
+6) Abra a seção que quer testar.
+7) Para dropdowns como "Targets", escolha UMA opção por vez e toque "Aplicar + mapear".
+8) Para toggles, use "Alternar + mapear" OU altere no menu original.
+9) O mapeador registra mudanças de Toggles/Options automaticamente.
+10) Ao terminar, toque "Inspecionar bindings/callbacks".
+11) Toque "Finalizar e salvar".
+
+SEGURANÇA DA COLETA
+-------------------
+- Não instala hook de HttpGet.
+- Não instala hook de request/http_request.
+- Não registra corpo de autenticação, key, token ou Authorization.
+- Strings sensíveis são redigidas.
+- Saída: MAM2_RECON_RUNTIME_V3_Sxx.txt
+
+IMPORTANTE
+----------
+Os dropdowns dinâmicos leem `ENV.Options[KEY].Values` do próprio menu original.
+Assim, se o original tiver Targets diferentes/novos, o mapeador mostra exatamente
+os valores carregados naquela versão, sem hardcode incompleto.
 ]]
 
-local Players=game:GetService("Players")
-local UIS=game:GetService("UserInputService")
-local RS=game:GetService("ReplicatedStorage")
-local StarterGui=game:GetService("StarterGui")
-local LP=Players.LocalPlayer
-local ENV=(getgenv and getgenv()) or _G
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RS = game:GetService("ReplicatedStorage")
+local StarterGui = game:GetService("StarterGui")
+local RunService = game:GetService("RunService")
+local LP = Players.LocalPlayer
+local ENV = (getgenv and getgenv()) or _G
 
-local function api(n)
-    local v
-    pcall(function()v=ENV[n]end)
-    if v~=nil then return v end
-    pcall(function()v=_G[n]end)
-    return v
+local function api(name)
+    local value
+    pcall(function() value = ENV[name] end)
+    if value ~= nil then return value end
+    pcall(function() value = _G[name] end)
+    return value
 end
 
-local writefileFn=api("writefile")
-local isfileFn=api("isfile")
-local setclipboardFn=api("setclipboard")
-local hookmetamethodFn=api("hookmetamethod")
-local getnamecallmethodFn=api("getnamecallmethod")
-local newcclosureFn=api("newcclosure")
-local hookfunctionFn=api("hookfunction")
-local getgcFn=api("getgc")
-local getconstantsFn=api("getconstants")
-local getupvaluesFn=api("getupvalues")
+local writefileFn = api("writefile")
+local isfileFn = api("isfile")
+local setclipboardFn = api("setclipboard")
+local hookmetamethodFn = api("hookmetamethod")
+local getnamecallmethodFn = api("getnamecallmethod")
+local newcclosureFn = api("newcclosure")
+local hookfunctionFn = api("hookfunction")
+local getgcFn = api("getgc")
+local getconstantsFn = api("getconstants") or (debug and debug.getconstants)
+local getupvaluesFn = api("getupvalues") or (debug and debug.getupvalues)
+local getprotosFn = api("getprotos") or (debug and debug.getprotos)
+local getinfoFn = api("getinfo") or (debug and debug.getinfo)
 
 pcall(function()
-    for _,k in ipairs({"__MAM2_RECON_RUNTIME_V1","__MAM2_RECON_RUNTIME_V2"}) do
-        local old=ENV[k]
-        if type(old)=="table" then
-            old.active=false
-            if old.gui then pcall(function()old.gui:Destroy()end) end
+    for _, key in ipairs({
+        "__MAM2_RECON_RUNTIME_V1",
+        "__MAM2_RECON_RUNTIME_V2",
+        "__MAM2_RECON_RUNTIME_V3",
+    }) do
+        local old = ENV[key]
+        if type(old) == "table" then
+            old.active = false
+            old.destroyed = true
+            if old.gui then pcall(function() old.gui:Destroy() end) end
         end
     end
 end)
 
-local state={
-    active=false, inspecting=false, finalized=false, marker="GERAL",
-    remoteCount=0,promptCount=0,clickCount=0,
-    internalTables=0,internalFunctions=0,
-    lines={},gui=nil,maxLines=35000,maxRemoteEvents=7000,
-}
-ENV.__MAM2_RECON_RUNTIME_V2=state
+local state = {
+    active = false,
+    inspecting = false,
+    finalized = false,
+    destroyed = false,
+    marker = "GERAL",
+    markerId = 0,
 
-local function push(x)
-    if #state.lines<state.maxLines then
-        state.lines[#state.lines+1]=tostring(x)
+    remoteCount = 0,
+    promptCount = 0,
+    clickCount = 0,
+    controlChangeCount = 0,
+    callbackCount = 0,
+    internalTables = 0,
+    internalFunctions = 0,
+
+    lines = {},
+    maxLines = 65000,
+    maxRemoteEvents = 14000,
+
+    gui = nil,
+    knownControlValues = {},
+    inspectedControls = {},
+    dropdownRefreshers = {},
+}
+
+ENV.__MAM2_RECON_RUNTIME_V3 = state
+
+local function push(value)
+    if #state.lines < state.maxLines then
+        state.lines[#state.lines + 1] = tostring(value)
     end
 end
 
-local function stamp() return string.format("%.3f",os.clock()) end
-
-local function sensitive(s)
-    s=string.lower(tostring(s or ""))
-    return s:find("premium",1,true) or s:find("license",1,true)
-        or s:find("authorization",1,true) or s:find("bearer ",1,true)
-        or s:find("session",1,true) or s:find("token",1,true)
-        or s:find("key=",1,true)
+local function stamp()
+    return string.format("%.3f", os.clock())
 end
 
-local function clean(s)
-    s=tostring(s or "")
-    if sensitive(s) then return "<REDACTED_SENSITIVE_STRING>" end
-    if #s>180 then return string.format("<LONG_STRING len=%d prefix=%q>",#s,s:sub(1,60)) end
+local function sensitive(value)
+    local s = string.lower(tostring(value or ""))
+    return s:find("authorization", 1, true)
+        or s:find("bearer ", 1, true)
+        or s:find("license", 1, true)
+        or s:find("premium_key", 1, true)
+        or s:find("api_key", 1, true)
+        or s:find("session_token", 1, true)
+        or s:find("access_token", 1, true)
+        or s:find("key=", 1, true)
+end
+
+local function clean(value)
+    local s = tostring(value or "")
+    if sensitive(s) then
+        return "<REDACTED_SENSITIVE_STRING>"
+    end
+    if #s > 260 then
+        return string.format("<LONG_STRING len=%d prefix=%q>", #s, s:sub(1, 80))
+    end
     return s
 end
 
 local function full(inst)
-    local ok,r=pcall(function()return inst:GetFullName()end)
-    return ok and r or tostring(inst)
+    local ok, result = pcall(function() return inst:GetFullName() end)
+    return ok and result or tostring(inst)
 end
 
-local function ser(v,depth,seen)
-    depth=depth or 0
-    seen=seen or {}
-    if depth>3 then return "<max-depth>" end
-    local t=typeof(v)
-    if t=="nil" then return "nil"
-    elseif t=="boolean" or t=="number" then return tostring(v)
-    elseif t=="string" then return string.format("%q",clean(v))
-    elseif t=="Instance" then
-        return string.format("<%s %s | %s>",v.ClassName,clean(v.Name),clean(full(v)))
-    elseif t=="Vector3" then return string.format("Vector3(%.3f,%.3f,%.3f)",v.X,v.Y,v.Z)
-    elseif t=="Vector2" then return string.format("Vector2(%.3f,%.3f)",v.X,v.Y)
-    elseif t=="CFrame" then
-        local c={v:GetComponents()}
-        for i=1,#c do c[i]=string.format("%.4f",c[i]) end
-        return "CFrame("..table.concat(c,",")..")"
-    elseif t=="Color3" then return string.format("Color3(%.3f,%.3f,%.3f)",v.R,v.G,v.B)
-    elseif t=="EnumItem" then return tostring(v)
-    elseif t=="function" then return "<function>"
-    elseif t=="table" then
-        if seen[v] then return "<cycle>" end
-        seen[v]=true
-        local out,n={},0
-        for k,x in pairs(v) do
-            n+=1
-            if n>24 then out[#out+1]="...";break end
-            out[#out+1]="["..ser(k,depth+1,seen).."]="..ser(x,depth+1,seen)
-        end
-        seen[v]=nil
-        return "{"..table.concat(out,", ").."}"
+local function ser(value, depth, seen)
+    depth = depth or 0
+    seen = seen or {}
+    if depth > 4 then return "<max-depth>" end
+
+    local t = typeof(value)
+    if t == "nil" then return "nil" end
+    if t == "boolean" or t == "number" then return tostring(value) end
+    if t == "string" then return string.format("%q", clean(value)) end
+    if t == "Instance" then
+        return string.format("<%s %s | %s>", value.ClassName, clean(value.Name), clean(full(value)))
     end
-    return "<"..t..":"..clean(tostring(v))..">"
+    if t == "Vector3" then
+        return string.format("Vector3(%.3f,%.3f,%.3f)", value.X, value.Y, value.Z)
+    end
+    if t == "Vector2" then
+        return string.format("Vector2(%.3f,%.3f)", value.X, value.Y)
+    end
+    if t == "CFrame" then
+        local c = { value:GetComponents() }
+        for i = 1, #c do c[i] = string.format("%.4f", c[i]) end
+        return "CFrame(" .. table.concat(c, ",") .. ")"
+    end
+    if t == "Color3" then
+        return string.format("Color3(%.3f,%.3f,%.3f)", value.R, value.G, value.B)
+    end
+    if t == "EnumItem" then return tostring(value) end
+    if t == "function" then return "<function>" end
+
+    if t == "table" then
+        if seen[value] then return "<cycle>" end
+        seen[value] = true
+        local out, count = {}, 0
+        for k, v in pairs(value) do
+            count += 1
+            if count > 40 then
+                out[#out + 1] = "..."
+                break
+            end
+            out[#out + 1] = "[" .. ser(k, depth + 1, seen) .. "]=" .. ser(v, depth + 1, seen)
+        end
+        seen[value] = nil
+        return "{" .. table.concat(out, ", ") .. "}"
+    end
+
+    return "<" .. t .. ":" .. clean(tostring(value)) .. ">"
 end
 
 local function args(...)
-    local p=table.pack(...)
-    local out={}
-    for i=1,p.n do out[i]=ser(p[i]) end
-    return table.concat(out,", ")
+    local packed = table.pack(...)
+    local out = {}
+    for i = 1, packed.n do
+        out[i] = ser(packed[i])
+    end
+    return table.concat(out, ", ")
 end
 
-local function mark(name)
-    state.marker=name
-    push("")
-    push("============================================================")
-    push("MARKER ["..stamp().."] "..name)
-    push("============================================================")
+local function getControlMap(kind)
+    if kind == "TOGGLE" then return ENV.Toggles end
+    return ENV.Options
 end
 
--- RemoteEvent / RemoteFunction
-local remoteHookOK=false
-if type(hookmetamethodFn)=="function" and type(getnamecallmethodFn)=="function" then
-    local old
-    local handler
-    handler=function(self,...)
-        local method
-        pcall(function()method=getnamecallmethodFn()end)
-        local cap=state.active and state.remoteCount<state.maxRemoteEvents
-            and (method=="FireServer" or method=="InvokeServer")
-        local isRemote=false
-        if cap and typeof(self)=="Instance" then
-            pcall(function()isRemote=self:IsA("RemoteEvent") or self:IsA("RemoteFunction")end)
+local function getControl(kind, key)
+    local map = getControlMap(kind)
+    if type(map) ~= "table" then return nil end
+    return rawget(map, key)
+end
+
+local function readControlValue(obj)
+    if type(obj) ~= "table" then return nil end
+    local value
+    pcall(function() value = obj.Value end)
+    return value
+end
+
+local function normalizeValueForDiff(value)
+    local t = typeof(value)
+    if t ~= "table" then return ser(value) end
+    local arr = {}
+    for k, v in pairs(value) do
+        if v == true then arr[#arr + 1] = tostring(k)
+        else arr[#arr + 1] = tostring(k) .. "=" .. ser(v) end
+    end
+    table.sort(arr)
+    return "{" .. table.concat(arr, ",") .. "}"
+end
+
+local function controlType(obj)
+    if type(obj) ~= "table" then return "nil" end
+    local typ
+    pcall(function() typ = obj.Type end)
+    return tostring(typ or typeof(obj))
+end
+
+local function getOptionValues(key)
+    local obj = getControl("OPTION", key)
+    if type(obj) ~= "table" then return {} end
+    local values
+    pcall(function() values = obj.Values end)
+    if type(values) ~= "table" then return {} end
+
+    local out = {}
+    for _, v in ipairs(values) do
+        out[#out + 1] = tostring(v)
+    end
+    if #out == 0 then
+        for k, v in pairs(values) do
+            if type(k) == "number" then
+                out[#out + 1] = tostring(v)
+            else
+                out[#out + 1] = tostring(k)
+            end
         end
-        if cap and isRemote then
-            state.remoteCount+=1
+    end
+    table.sort(out)
+    return out
+end
+
+local function snapshotControls(tag, keys)
+    push("")
+    push("---- SNAPSHOT " .. clean(tag) .. " [" .. stamp() .. "] ----")
+
+    local toggles, options = ENV.Toggles, ENV.Options
+
+    if type(keys) == "table" and #keys > 0 then
+        for _, spec in ipairs(keys) do
+            local kind, key = spec[1], spec[2]
+            local obj = getControl(kind, key)
+            if obj then
+                push(string.format(
+                    "%s %s | type=%s | value=%s",
+                    kind,
+                    clean(key),
+                    controlType(obj),
+                    normalizeValueForDiff(readControlValue(obj))
+                ))
+            else
+                push(string.format("%s %s | <nao encontrado>", kind, clean(key)))
+            end
+        end
+        return
+    end
+
+    if type(toggles) == "table" then
+        local names = {}
+        for k in pairs(toggles) do names[#names + 1] = tostring(k) end
+        table.sort(names)
+        for _, key in ipairs(names) do
+            local obj = toggles[key]
             push(string.format(
-                "[REMOTE %04d][%s][%s] %s:%s(%s)",
-                state.remoteCount,stamp(),state.marker,clean(full(self)),tostring(method),args(...)
+                "TOGGLE %s | type=%s | value=%s",
+                clean(key),
+                controlType(obj),
+                normalizeValueForDiff(readControlValue(obj))
             ))
         end
-        if method=="InvokeServer" then
-            local r=table.pack(old(self,...))
-            if cap and isRemote then
-                local out={}
-                for i=1,r.n do out[i]=ser(r[i]) end
-                push("[RETURN]["..state.marker.."] "..table.concat(out,", "))
-            end
-            return table.unpack(r,1,r.n)
-        end
-        return old(self,...)
     end
-    if type(newcclosureFn)=="function" then handler=newcclosureFn(handler) end
-    local ok,res=pcall(function()
-        old=hookmetamethodFn(game,"__namecall",handler)
+
+    if type(options) == "table" then
+        local names = {}
+        for k in pairs(options) do names[#names + 1] = tostring(k) end
+        table.sort(names)
+        for _, key in ipairs(names) do
+            local obj = options[key]
+            push(string.format(
+                "OPTION %s | type=%s | value=%s",
+                clean(key),
+                controlType(obj),
+                normalizeValueForDiff(readControlValue(obj))
+            ))
+        end
+    end
+end
+
+local function mark(name, keys)
+    state.markerId += 1
+    state.marker = name
+    push("")
+    push("================================================================")
+    push(string.format("MARKER #%03d [%s] %s", state.markerId, stamp(), clean(name)))
+    push("================================================================")
+    if keys then snapshotControls("INICIO " .. name, keys) end
+end
+
+local remoteHookOK = false
+if type(hookmetamethodFn) == "function" and type(getnamecallmethodFn) == "function" then
+    local old
+    local handler
+
+    handler = function(self, ...)
+        local method
+        pcall(function() method = getnamecallmethodFn() end)
+
+        local cap = state.active
+            and state.remoteCount < state.maxRemoteEvents
+            and (method == "FireServer" or method == "InvokeServer")
+
+        local isRemote = false
+        if cap and typeof(self) == "Instance" then
+            pcall(function()
+                isRemote = self:IsA("RemoteEvent") or self:IsA("RemoteFunction")
+            end)
+        end
+
+        if cap and isRemote then
+            state.remoteCount += 1
+            push(string.format(
+                "[REMOTE %05d][%s][M%03d:%s] %s:%s(%s)",
+                state.remoteCount,
+                stamp(),
+                state.markerId,
+                clean(state.marker),
+                clean(full(self)),
+                tostring(method),
+                args(...)
+            ))
+        end
+
+        if method == "InvokeServer" then
+            local result = table.pack(old(self, ...))
+            if cap and isRemote then
+                local out = {}
+                for i = 1, result.n do out[i] = ser(result[i]) end
+                push("[RETURN][" .. clean(state.marker) .. "] " .. table.concat(out, ", "))
+            end
+            return table.unpack(result, 1, result.n)
+        end
+
+        return old(self, ...)
+    end
+
+    if type(newcclosureFn) == "function" then
+        handler = newcclosureFn(handler)
+    end
+
+    local ok, result = pcall(function()
+        old = hookmetamethodFn(game, "__namecall", handler)
         return old
     end)
-    remoteHookOK=ok and type(res)=="function"
+    remoteHookOK = ok and type(result) == "function"
 end
 
--- ProximityPrompt
-local firePromptFn=api("fireproximityprompt")
-if type(firePromptFn)=="function" and type(hookfunctionFn)=="function" then
+local firePromptFn = api("fireproximityprompt")
+if type(firePromptFn) == "function" and type(hookfunctionFn) == "function" then
     local old
     pcall(function()
-        old=hookfunctionFn(firePromptFn,function(prompt,...)
-            if state.active and typeof(prompt)=="Instance" then
-                state.promptCount+=1
-                local a,o="",""
-                pcall(function()a=prompt.ActionText;o=prompt.ObjectText end)
-                push(string.format("[PROMPT %04d][%s][%s] %s | Action=%q | Object=%q",
-                    state.promptCount,stamp(),state.marker,clean(full(prompt)),clean(a),clean(o)))
+        old = hookfunctionFn(firePromptFn, function(prompt, ...)
+            if state.active and typeof(prompt) == "Instance" then
+                state.promptCount += 1
+                local action, object = "", ""
+                pcall(function()
+                    action = prompt.ActionText
+                    object = prompt.ObjectText
+                end)
+                push(string.format(
+                    "[PROMPT %05d][%s][M%03d:%s] %s | Action=%q | Object=%q",
+                    state.promptCount,
+                    stamp(),
+                    state.markerId,
+                    clean(state.marker),
+                    clean(full(prompt)),
+                    clean(action),
+                    clean(object)
+                ))
             end
-            return old(prompt,...)
+            return old(prompt, ...)
         end)
     end)
 end
 
--- ClickDetector
-local fireClickFn=api("fireclickdetector")
-if type(fireClickFn)=="function" and type(hookfunctionFn)=="function" then
+local fireClickFn = api("fireclickdetector")
+if type(fireClickFn) == "function" and type(hookfunctionFn) == "function" then
     local old
     pcall(function()
-        old=hookfunctionFn(fireClickFn,function(det,...)
-            if state.active and typeof(det)=="Instance" then
-                state.clickCount+=1
-                push(string.format("[CLICK %04d][%s][%s] %s args=(%s)",
-                    state.clickCount,stamp(),state.marker,clean(full(det)),args(...)))
+        old = hookfunctionFn(fireClickFn, function(detector, ...)
+            if state.active and typeof(detector) == "Instance" then
+                state.clickCount += 1
+                push(string.format(
+                    "[CLICK %05d][%s][M%03d:%s] %s args=(%s)",
+                    state.clickCount,
+                    stamp(),
+                    state.markerId,
+                    clean(state.marker),
+                    clean(full(detector)),
+                    args(...)
+                ))
             end
-            return old(det,...)
+            return old(detector, ...)
         end)
     end)
 end
 
-local TARGET_KEYS={
-    -- Boulder / Near
-    "boulderRoots","equipPick","swing","swingGap","pickTarget","boulderHealth",
-    "boulderKind","beginLoot","nearStep","buildMineCells","visibleAnchor",
-    "coreSpot","anchorSpot","underClearOffsets","digAroundSpot",
-    -- Pickup
-    "grabCrystal","crystalPrompt","pickupStep","backpackFree","crystalWeight",
-    "crystalValue","crystalLuck",
-    -- Money / Sell
-    "sell","sellAll","trySell","shouldSell","autoSell","moneyFarm",
-    -- Favorite
-    "favorite","favoriteCrystal","toggleFavorite","autoFavorite","favoriteStep",
-    -- Dupe
-    "dupe","dupeNuker","DupeZnVis","dupeStep","dupeCrystal","dupeZone",
-    -- Placement
-    "runAutoPlacerStep","runAutoPlacerBestStep","runAutoPlaceRunesStep",
-    "placeCrystal","placeRune","placeBest","placementGrid",
-    -- Utility / partials
-    "applyPivot","requestStream","setNoclip","glideStop","hop","hopLowest",
-    "deactivateRagdollPhysics","DeactivateRagdoll","cameraShake",
-    "NoCameraShake","optimizeCrystals",
+local visitedFunctions = setmetatable({}, { __mode = "k" })
+
+local function dumpFunctionDeep(label, fn, depth)
+    if type(fn) ~= "function" then return end
+    depth = depth or 0
+    if depth > 2 or visitedFunctions[fn] then return end
+    visitedFunctions[fn] = true
+
+    state.internalFunctions += 1
+    push("")
+    push(string.format("[FUNCTION][depth=%d] %s", depth, clean(label)))
+
+    if type(getinfoFn) == "function" then
+        pcall(function()
+            local info = getinfoFn(fn)
+            if type(info) == "table" then
+                push("  info=" .. ser({
+                    source = info.source or info.short_src,
+                    name = info.name,
+                    linedefined = info.linedefined,
+                    what = info.what,
+                    nups = info.nups,
+                }))
+            end
+        end)
+    elseif debug and debug.info then
+        pcall(function()
+            push("  debug.info=" .. tostring(debug.info(fn, "sln")))
+        end)
+    end
+
+    if type(getconstantsFn) == "function" then
+        local ok, constants = pcall(getconstantsFn, fn)
+        if ok and type(constants) == "table" then
+            local out = {}
+            for i, v in pairs(constants) do
+                if #out >= 180 then
+                    out[#out + 1] = "..."
+                    break
+                end
+                if type(v) ~= "string" or not sensitive(v) then
+                    out[#out + 1] = tostring(i) .. "=" .. ser(v)
+                else
+                    out[#out + 1] = tostring(i) .. "=<REDACTED>"
+                end
+            end
+            push("  constants=" .. table.concat(out, " | "))
+        end
+    end
+
+    if type(getupvaluesFn) == "function" then
+        local ok, ups = pcall(getupvaluesFn, fn)
+        if ok and type(ups) == "table" then
+            local summary = {}
+            for i, v in pairs(ups) do
+                if #summary >= 90 then
+                    summary[#summary + 1] = "..."
+                    break
+                end
+                summary[#summary + 1] = tostring(i) .. "=" .. ser(v)
+            end
+            push("  upvalues=" .. table.concat(summary, " | "))
+
+            if depth < 2 then
+                for i, v in pairs(ups) do
+                    if type(v) == "function" then
+                        dumpFunctionDeep(label .. ".upvalue[" .. tostring(i) .. "]", v, depth + 1)
+                    elseif type(v) == "table" then
+                        local functionHits = 0
+                        for k, x in pairs(v) do
+                            if type(x) == "function" then
+                                functionHits += 1
+                                dumpFunctionDeep(
+                                    label .. ".upvalue[" .. tostring(i) .. "]." .. tostring(k),
+                                    x,
+                                    depth + 1
+                                )
+                                if functionHits >= 12 then break end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if type(getprotosFn) == "function" and depth < 2 then
+        local ok, protos = pcall(getprotosFn, fn)
+        if ok and type(protos) == "table" then
+            push("  protos=" .. tostring(#protos))
+            for i, proto in ipairs(protos) do
+                if i > 20 then break end
+                if type(proto) == "function" then
+                    dumpFunctionDeep(label .. ".proto[" .. i .. "]", proto, depth + 1)
+                end
+            end
+        end
+    end
+end
+
+local function inspectControl(kind, key, force)
+    local token = kind .. ":" .. key
+    if state.inspectedControls[token] and not force then
+        push("[CONTROL] " .. token .. " ja inspecionado nesta sessao.")
+        return
+    end
+
+    local obj = getControl(kind, key)
+    push("")
+    push("---- CONTROL BINDING " .. token .. " [" .. stamp() .. "] ----")
+
+    if type(obj) ~= "table" then
+        push("<controle ainda nao encontrado>")
+        return
+    end
+
+    state.inspectedControls[token] = true
+    state.callbackCount += 1
+
+    local fields = {
+        "Type", "Text", "Value", "Values", "Multi", "AllowNull",
+        "Default", "Min", "Max", "Rounding", "Suffix",
+        "Callback", "Changed", "SetValue", "SetValues",
+    }
+    for _, field in ipairs(fields) do
+        local ok, value = pcall(function() return obj[field] end)
+        if ok and value ~= nil then
+            push("  " .. field .. "=" .. ser(value))
+        end
+    end
+
+    local callback, changed
+    pcall(function() callback = obj.Callback end)
+    pcall(function() changed = obj.Changed end)
+
+    if type(callback) == "function" then
+        dumpFunctionDeep(token .. ".Callback", callback, 0)
+    end
+    if type(changed) == "function" and changed ~= callback then
+        dumpFunctionDeep(token .. ".Changed", changed, 0)
+    end
+end
+
+local function setToggleValue(key, value)
+    local obj = getControl("TOGGLE", key)
+    if type(obj) ~= "table" then return false, "toggle nao encontrado" end
+    if type(obj.SetValue) ~= "function" then return false, "SetValue indisponivel" end
+    local ok, err = pcall(function() obj:SetValue(value and true or false) end)
+    return ok, err
+end
+
+local function setOptionValue(key, value, singleForMulti)
+    local obj = getControl("OPTION", key)
+    if type(obj) ~= "table" then return false, "option nao encontrada" end
+    if type(obj.SetValue) ~= "function" then return false, "SetValue indisponivel" end
+
+    local multi = false
+    pcall(function() multi = obj.Multi == true end)
+
+    local send = value
+    if multi and singleForMulti then
+        send = { [tostring(value)] = true }
+    end
+
+    local ok, err = pcall(function() obj:SetValue(send) end)
+    return ok, err
+end
+
+local function targetControlSnapshot(kind, key)
+    return {
+        { kind, key }
+    }
+end
+
+task.spawn(function()
+    while not state.destroyed do
+        if state.active then
+            for _, kind in ipairs({ "TOGGLE", "OPTION" }) do
+                local map = getControlMap(kind)
+                if type(map) == "table" then
+                    for key, obj in pairs(map) do
+                        local token = kind .. ":" .. tostring(key)
+                        local current = normalizeValueForDiff(readControlValue(obj))
+                        local previous = state.knownControlValues[token]
+
+                        if previous == nil then
+                            state.knownControlValues[token] = current
+                        elseif current ~= previous then
+                            state.controlChangeCount += 1
+                            push(string.format(
+                                "[CONTROL_CHANGE %05d][%s][M%03d:%s] %s %s | %s -> %s",
+                                state.controlChangeCount,
+                                stamp(),
+                                state.markerId,
+                                clean(state.marker),
+                                kind,
+                                clean(key),
+                                previous,
+                                current
+                            ))
+                            state.knownControlValues[token] = current
+
+                            if not state.inspectedControls[token] then
+                                pcall(inspectControl, kind, tostring(key), false)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.16)
+    end
+end)
+
+local TARGET_KEYS = {
+    "boulderRoots", "equipPick", "swing", "swingGap", "pickTarget", "boulderHealth",
+    "boulderKind", "beginLoot", "nearStep", "buildMineCells", "visibleAnchor",
+    "coreSpot", "anchorSpot", "underClearOffsets", "digAroundSpot", "findNearBoulder",
+    "clearTargets", "SCAN_SPOTS", "positionSafetyPlatform",
+    "grabCrystal", "crystalPrompt", "pickupStep", "backpackFree",
+    "crystalWeight", "crystalValue", "crystalLuck",
+    "sell", "sellAll", "trySell", "shouldSell", "autoSell", "moneyFarm",
+    "fortuneRuneActive", "hasFortuneRuneOnPlot",
+    "favorite", "favoriteCrystal", "toggleFavorite", "autoFavorite", "favoriteStep",
+    "dupe", "dupeNuker", "DupeZnVis", "dupeStep", "dupeCrystal", "dupeZone",
+    "runAutoPlacerStep", "runAutoPlacerBestStep", "runAutoPlaceRunesStep",
+    "placeCrystal", "placeRune", "placeBest", "placementGrid",
+    "applyPivot", "requestStream", "setNoclip", "glideStop", "hop", "hopLowest",
+    "deactivateRagdollPhysics", "DeactivateRagdoll", "cameraShake",
+    "NoCameraShake", "optimizeCrystals",
 }
 
-local NEEDLES={
-    "MinedHP","No pickaxe","Boulder","boulderFarm","No boulders","Mining surface",
-    "Selling","Money Farm","AutoFarmMoney","Favorite","AutoFavorite",
-    "Dupe","dupeNuker","DupeZnVis","AutoPlace","Placement","Place Runes",
-    "Breaking crystal","Collected","Fortune Rune",
-    "DeactivateRagdoll","NoCameraShake","OptimizeCrystals",
+local NEEDLES = {
+    "MinedHP", "No pickaxe", "Boulder", "boulderFarm", "No boulders",
+    "Mining surface", "Selling", "Money Farm", "AutoFarmMoney",
+    "Favorite", "AutoFavorite", "ToggleFavorite",
+    "Dupe", "dupeNuker", "DupeZnVis", "PlayerDupeNuker", "DupeSwing",
+    "AutoPlace", "Placement", "Place Runes", "PlotPlaceRequest",
+    "Breaking crystal", "Collected", "Fortune Rune",
+    "DeactivateRagdoll", "NoCameraShake", "OptimizeCrystals",
+    "DigRequest", "SellRequest", "GrabRequest", "SledgeSwing",
 }
 
-local function constantsMatch(c)
-    if type(c)~="table" then return false end
-    for _,v in pairs(c) do
-        if type(v)=="string" then
-            local low=string.lower(v)
-            for _,n in ipairs(NEEDLES) do
-                if low:find(string.lower(n),1,true) then return true end
+local function constantsMatch(constants)
+    if type(constants) ~= "table" then return false end
+    for _, value in pairs(constants) do
+        if type(value) == "string" then
+            local low = string.lower(value)
+            for _, needle in ipairs(NEEDLES) do
+                if low:find(string.lower(needle), 1, true) then
+                    return true
+                end
             end
         end
     end
     return false
 end
 
-local function dumpFn(label,fn)
-    push("")
-    push("[FUNCTION] "..clean(label))
-    if type(getconstantsFn)=="function" then
-        local ok,c=pcall(getconstantsFn,fn)
-        if ok and type(c)=="table" then
-            local out,n={},0
-            for k,v in pairs(c) do
-                n+=1
-                if n>100 then out[#out+1]="...";break end
-                out[#out+1]=tostring(k).."="..ser(v)
-            end
-            push("  constants: "..table.concat(out," | "))
-        end
-    end
-    if type(getupvaluesFn)=="function" then
-        local ok,u=pcall(getupvaluesFn,fn)
-        if ok then push("  upvalues: "..ser(u)) end
-    end
-    pcall(function()
-        if debug and debug.info then push("  debug.info: "..tostring(debug.info(fn,"sln"))) end
-    end)
-end
-
-local function dumpMap(title,map)
-    push("")
-    push("---- "..title.." ----")
-    if type(map)~="table" then push("<nao encontrado>");return end
-    local keys={}
-    for k in pairs(map) do keys[#keys+1]=tostring(k) end
-    table.sort(keys)
-    for _,k in ipairs(keys) do
-        local o=map[k]
-        local v,t
-        pcall(function()v=o.Value;t=o.Type end)
-        push(string.format("%s | type=%s | value=%s",clean(k),tostring(t or typeof(o)),ser(v)))
-    end
-end
+local GUIDED_CONTROLS = {
+    {"OPTION","FarmTargets"}, {"TOGGLE","AutoFarmBoulders"},
+    {"TOGGLE","HopOnNoBoulders"}, {"TOGGLE","StuckHop"}, {"OPTION","HopServerMode"},
+    {"OPTION","BoulderFilter"}, {"OPTION","BoulderStanceDirection"}, {"OPTION","BoulderStanceDistance"},
+    {"OPTION","ClearTerritoryFor"}, {"OPTION","ClearPasses"}, {"OPTION","ClearSpotsCount"},
+    {"OPTION","ClearSpreadRadius"}, {"OPTION","ClearGlideSpeed"}, {"OPTION","PickaxeMode"},
+    {"TOGGLE","AutoNearCollect"}, {"TOGGLE","AutoPickup"}, {"OPTION","PickupRarityBlacklist"},
+    {"OPTION","PkBatch"}, {"OPTION","PkDelay"}, {"OPTION","PkMutFlt"}, {"OPTION","PkSzFlt"},
+    {"TOGGLE","PkIgnFull"}, {"TOGGLE","AutoFarmMoney"}, {"TOGGLE","MoneyAutoSell"},
+    {"OPTION","MoneySellThreshold"}, {"TOGGLE","MoneyPlaceFortuneRune"},
+    {"TOGGLE","MoneyForceRemoveFortuneRune"}, {"TOGGLE","MoneySellTeleportBack"},
+    {"TOGGLE","MoneyRejoinAfterSell"}, {"TOGGLE","SellFreeze"}, {"OPTION","SellFreezeSecs"},
+    {"TOGGLE","AutoFavorite"}, {"TOGGLE","AutoFavRarity"}, {"OPTION","AutoFavoriteLuck"},
+    {"OPTION","AutoFavoriteValue"}, {"OPTION","FavRaritySelect"},
+    {"TOGGLE","PlayerDupeNuker"}, {"TOGGLE","DupeSwing"}, {"TOGGLE","DupeZnVis"},
+    {"TOGGLE","AutoPlaceCrystals"}, {"TOGGLE","AutoPlaceCrystalsBest"}, {"TOGGLE","AutoPlaceRunes"},
+    {"TOGGLE","ShowPlacementGrid"}, {"TOGGLE","InstantPlotTake"}, {"OPTION","PlacePriorityMode"},
+    {"OPTION","PlaceBestPriorityMode"}, {"OPTION","PlaceInterval"}, {"OPTION","PlaceMinLuck"},
+    {"OPTION","PlaceMinMoney"}, {"OPTION","PlaceMinSize"}, {"OPTION","PlacementHeight"},
+    {"OPTION","RunePlaceAtOnce"}, {"OPTION","RunePlaceInterval"},
+    {"TOGGLE","misc_no_ragdoll"}, {"TOGGLE","misc_no_camera_shake"},
+    {"TOGGLE","misc_optimize_crystals"}, {"TOGGLE","misc_no_fall_damage"}, {"TOGGLE","misc_god_mode"},
+}
 
 local function scanRemotes()
     push("")
     push("---- REMOTES VISIVEIS EM ReplicatedStorage ----")
-    local n=0
-    for _,inst in ipairs(RS:GetDescendants()) do
+    local count = 0
+    for _, inst in ipairs(RS:GetDescendants()) do
         if inst:IsA("RemoteEvent") or inst:IsA("RemoteFunction") then
-            n+=1
-            push(string.format("%03d | %s | %s",n,inst.ClassName,clean(full(inst))))
-            if n>=600 then push("<limite de 600 remotes>");break end
+            count += 1
+            push(string.format("%03d | %s | %s", count, inst.ClassName, clean(full(inst))))
+            if count >= 700 then break end
         end
     end
-    if n==0 then push("<nenhum remote visivel>") end
 end
 
 local function inspectInternals()
     if state.inspecting then return end
-    state.inspecting=true
+    state.inspecting = true
+    table.clear(visitedFunctions)
     push("")
-    push("############################################################")
-    push("INSPECAO INTERNA ["..stamp().."]")
-    push("############################################################")
-
-    dumpMap("TOGGLES",ENV.Toggles)
-    dumpMap("OPTIONS",ENV.Options)
+    push("################################################################")
+    push("INSPECAO DETALHADA DE BINDINGS [" .. stamp() .. "]")
+    push("################################################################")
+    snapshotControls("TODOS OS CONTROLES", nil)
     pcall(scanRemotes)
 
-    if type(getgcFn)~="function" then
+    push("")
+    push("---- CALLBACKS DOS CONTROLES GUIADOS ----")
+    for i, spec in ipairs(GUIDED_CONTROLS) do
+        if i % 8 == 0 then task.wait() end
+        pcall(inspectControl, spec[1], spec[2], true)
+    end
+
+    if type(getgcFn) ~= "function" then
         push("getgc indisponivel.")
-        state.inspecting=false
+        state.inspecting = false
         return
     end
 
-    local ok,objects=pcall(getgcFn,true)
-    if not ok or type(objects)~="table" then
+    local ok, objects = pcall(getgcFn, true)
+    if not ok or type(objects) ~= "table" then
         push("getgc(true) falhou.")
-        state.inspecting=false
+        state.inspecting = false
         return
     end
 
     push("")
-    push("---- TABELAS CANDIDATAS ----")
-    local tc,fc=0,0
-    for i,o in ipairs(objects) do
-        if i%300==0 then task.wait() end
-        if type(o)=="table" then
-            local hits={}
-            for _,k in ipairs(TARGET_KEYS) do
-                if rawget(o,k)~=nil then hits[#hits+1]=k end
+    push("---- TABELAS CANDIDATAS (1+ HIT) ----")
+    local tableCount = 0
+    for i, obj in ipairs(objects) do
+        if i % 350 == 0 then task.wait() end
+        if type(obj) == "table" then
+            local hits = {}
+            for _, key in ipairs(TARGET_KEYS) do
+                if rawget(obj, key) ~= nil then hits[#hits + 1] = key end
             end
-            if #hits>=2 then
-                tc+=1
-                state.internalTables+=1
-                push(string.format("[TABLE %03d] gc=%d hits=%s",tc,i,table.concat(hits,", ")))
-                for _,k in ipairs(hits) do
-                    local v=rawget(o,k)
-                    push("  "..k.." = "..ser(v))
-                    if type(v)=="function" then dumpFn("table."..k,v) end
+            if #hits >= 1 then
+                tableCount += 1
+                state.internalTables += 1
+                push(string.format("[TABLE %03d] gc=%d hits=%s", tableCount, i, table.concat(hits, ", ")))
+                for _, key in ipairs(hits) do
+                    local value = rawget(obj, key)
+                    push("  " .. key .. "=" .. ser(value))
+                    if type(value) == "function" then dumpFunctionDeep("table." .. key, value, 0) end
                 end
-                if tc>=70 then push("<limite de tabelas candidatas>");break end
+                if tableCount >= 160 then break end
             end
         end
     end
 
-    if type(getconstantsFn)=="function" then
+    if type(getconstantsFn) == "function" then
         push("")
         push("---- FUNCOES GC COM CONSTANTES RELEVANTES ----")
-        for i,o in ipairs(objects) do
-            if i%250==0 then task.wait() end
-            if type(o)=="function" then
-                local okc,c=pcall(getconstantsFn,o)
-                if okc and constantsMatch(c) then
-                    fc+=1
-                    state.internalFunctions+=1
-                    dumpFn("gc_function_"..i,o)
-                    if fc>=140 then push("<limite de funcoes candidatas>");break end
+        local functionCount = 0
+        for i, obj in ipairs(objects) do
+            if i % 300 == 0 then task.wait() end
+            if type(obj) == "function" then
+                local okc, constants = pcall(getconstantsFn, obj)
+                if okc and constantsMatch(constants) then
+                    functionCount += 1
+                    dumpFunctionDeep("gc_function_" .. i, obj, 0)
+                    if functionCount >= 220 then break end
                 end
             end
         end
     end
 
-    push(string.format("Inspecao concluida: tables=%d functions=%d gc=%d",tc,fc,#objects))
-    state.inspecting=false
+    push(string.format(
+        "Inspecao concluida: callbacks=%d tables=%d functions=%d gc=%d",
+        state.callbackCount,
+        tableCount,
+        state.internalFunctions,
+        #objects
+    ))
+    state.inspecting = false
 end
 
 local function nextSession()
-    if type(isfileFn)~="function" then return 1 end
-    for i=1,99 do
-        local n=string.format("MAM2_RECON_RUNTIME_S%02d.txt",i)
-        local exists=false
-        pcall(function()exists=isfileFn(n)end)
+    if type(isfileFn) ~= "function" then return 1 end
+    for i = 1, 99 do
+        local name = string.format("MAM2_RECON_RUNTIME_V3_S%02d.txt", i)
+        local exists = false
+        pcall(function() exists = isfileFn(name) end)
         if not exists then return i end
     end
     return 99
 end
-local session=nextSession()
+
+local session = nextSession()
 
 local function begin()
     if state.active then return false end
-    state.lines={}
-    state.remoteCount=0;state.promptCount=0;state.clickCount=0
-    state.internalTables=0;state.internalFunctions=0
-    state.finalized=false;state.active=true
-    push("Mine a Mountain 2 - Runtime Reconstruction Mapper V2")
-    push("session="..session)
-    push("started_clock="..stamp())
-    push("remote_hook_ok="..tostring(remoteHookOK))
-    push("getgc="..tostring(type(getgcFn)=="function"))
-    push("getconstants="..tostring(type(getconstantsFn)=="function"))
-    push("getupvalues="..tostring(type(getupvaluesFn)=="function"))
-    mark("GERAL / LOADER")
+    state.lines = {}
+    state.remoteCount = 0
+    state.promptCount = 0
+    state.clickCount = 0
+    state.controlChangeCount = 0
+    state.callbackCount = 0
+    state.internalTables = 0
+    state.internalFunctions = 0
+    state.markerId = 0
+    state.marker = "GERAL"
+    state.finalized = false
+    state.active = true
+    table.clear(state.knownControlValues)
+    table.clear(state.inspectedControls)
+    table.clear(visitedFunctions)
+
+    push("Mine a Mountain 2 - Runtime Detailed Reconstruction Mapper V3")
+    push("session=" .. session)
+    push("started_clock=" .. stamp())
+    push("remote_hook_ok=" .. tostring(remoteHookOK))
+    push("getgc=" .. tostring(type(getgcFn) == "function"))
+    push("getconstants=" .. tostring(type(getconstantsFn) == "function"))
+    push("getupvalues=" .. tostring(type(getupvaluesFn) == "function"))
+    push("getprotos=" .. tostring(type(getprotosFn) == "function"))
+    push("http_request_hooks=false")
+    push("auth_capture=false")
+    mark("GERAL / CARREGAMENTO DO MENU ORIGINAL")
     return true
 end
 
 local function finish()
-    if not state.active then return false,"Nenhum mapeamento em andamento." end
-    state.active=false
+    if not state.active then return false, "Nenhum mapeamento em andamento." end
+    state.active = false
     push("")
-    push("############################################################")
+    push("################################################################")
     push("FINAL")
-    push("############################################################")
-    push("finished_clock="..stamp())
-    push("remote_calls="..state.remoteCount)
-    push("prompt_calls="..state.promptCount)
-    push("click_calls="..state.clickCount)
-    push("internal_tables="..state.internalTables)
-    push("internal_functions="..state.internalFunctions)
+    push("################################################################")
+    push("finished_clock=" .. stamp())
+    push("remote_calls=" .. state.remoteCount)
+    push("prompt_calls=" .. state.promptCount)
+    push("click_calls=" .. state.clickCount)
+    push("control_changes=" .. state.controlChangeCount)
+    push("callbacks_inspected=" .. state.callbackCount)
+    push("internal_tables=" .. state.internalTables)
+    push("internal_functions=" .. state.internalFunctions)
 
-    local name=string.format("MAM2_RECON_RUNTIME_S%02d.txt",session)
-    local content=table.concat(state.lines,"\n")
-    if type(writefileFn)=="function" then
-        local ok,e=pcall(writefileFn,name,content)
-        if ok then state.finalized=true;return true,name end
-        return false,tostring(e)
+    local name = string.format("MAM2_RECON_RUNTIME_V3_S%02d.txt", session)
+    local content = table.concat(state.lines, "\n")
+
+    if type(writefileFn) == "function" then
+        local ok, err = pcall(writefileFn, name, content)
+        if ok then state.finalized = true; return true, name end
+        return false, tostring(err)
     end
-    if type(setclipboardFn)=="function" then
-        pcall(setclipboardFn,content)
-        return false,"writefile indisponivel; conteudo copiado."
+    if type(setclipboardFn) == "function" then
+        pcall(setclipboardFn, content)
+        return false, "writefile indisponivel; conteudo copiado."
     end
-    return false,"writefile/setclipboard indisponiveis."
+    return false, "writefile/setclipboard indisponiveis."
 end
 
--- UI
 local parent
-pcall(function()if type(gethui)=="function" then parent=gethui() end end)
-if not parent then pcall(function()parent=game:GetService("CoreGui")end) end
-if not parent and LP then parent=LP:FindFirstChildOfClass("PlayerGui") end
+pcall(function() if type(gethui) == "function" then parent = gethui() end end)
+if not parent then pcall(function() parent = game:GetService("CoreGui") end) end
+if not parent and LP then parent = LP:FindFirstChildOfClass("PlayerGui") end
 
-local function corner(o,r)
-    local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,r or 8);c.Parent=o
+local COLORS = {
+    bg = Color3.fromRGB(15, 22, 33), header = Color3.fromRGB(21, 32, 48),
+    panel = Color3.fromRGB(18, 27, 40), button = Color3.fromRGB(29, 47, 72),
+    button2 = Color3.fromRGB(23, 37, 57), accent = Color3.fromRGB(70, 137, 230),
+    outline = Color3.fromRGB(62, 96, 138), text = Color3.fromRGB(235, 239, 246),
+    muted = Color3.fromRGB(177, 191, 210),
+}
+
+local function corner(obj, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 8)
+    c.Parent = obj
 end
-local function label(p,t,y,size)
-    local l=Instance.new("TextLabel")
-    l.BackgroundTransparency=1;l.Position=UDim2.new(0,12,0,y)
-    l.Size=UDim2.new(1,-24,0,22);l.Font=Enum.Font.Gotham
-    l.TextSize=size or 12;l.TextColor3=Color3.fromRGB(235,239,246)
-    l.TextXAlignment=Enum.TextXAlignment.Left;l.Text=t;l.Parent=p
+
+local function stroke(obj, color, transparency)
+    local s = Instance.new("UIStroke")
+    s.Color = color or COLORS.outline
+    s.Transparency = transparency or 0.2
+    s.Thickness = 1
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = obj
+end
+
+local function label(parentObj, text, size, bold)
+    local l = Instance.new("TextLabel")
+    l.BackgroundTransparency = 1
+    l.Size = UDim2.new(1, 0, 0, 22)
+    l.Font = bold and Enum.Font.GothamBold or Enum.Font.Gotham
+    l.TextSize = size or 12
+    l.TextColor3 = COLORS.text
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Text = text or ""
+    l.Parent = parentObj
     return l
 end
-local function button(p,t)
-    local b=Instance.new("TextButton")
-    b.Size=UDim2.new(1,-8,0,34);b.BackgroundColor3=Color3.fromRGB(29,47,72)
-    b.BorderSizePixel=0;b.Font=Enum.Font.GothamSemibold;b.TextSize=12
-    b.TextColor3=Color3.fromRGB(245,248,252);b.Text=t;b.Parent=p
-    corner(b,8);return b
+
+local function button(parentObj, text, height)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, 0, 0, height or 30)
+    b.BackgroundColor3 = COLORS.button
+    b.BorderSizePixel = 0
+    b.Font = Enum.Font.GothamSemibold
+    b.TextSize = 11
+    b.TextColor3 = COLORS.text
+    b.Text = text
+    b.AutoButtonColor = false
+    b.Parent = parentObj
+    corner(b, 7)
+    stroke(b, COLORS.outline, 0.45)
+    return b
+end
+
+local function section(parentObj, title)
+    local outer = Instance.new("Frame")
+    outer.Size = UDim2.new(1, 0, 0, 38)
+    outer.AutomaticSize = Enum.AutomaticSize.Y
+    outer.BackgroundColor3 = COLORS.panel
+    outer.BorderSizePixel = 0
+    outer.Parent = parentObj
+    corner(outer, 8)
+    stroke(outer, COLORS.outline, 0.45)
+
+    local header = Instance.new("TextButton")
+    header.Size = UDim2.new(1, 0, 0, 34)
+    header.BackgroundColor3 = COLORS.button2
+    header.BorderSizePixel = 0
+    header.Text = ""
+    header.AutoButtonColor = false
+    header.Parent = outer
+    corner(header, 8)
+
+    local titleLabel = label(header, title, 12, true)
+    titleLabel.Position = UDim2.fromOffset(9, 6)
+    titleLabel.Size = UDim2.new(1, -42, 0, 22)
+
+    local arrow = label(header, "▼", 12, true)
+    arrow.AnchorPoint = Vector2.new(1, 0)
+    arrow.Position = UDim2.new(1, -9, 0, 6)
+    arrow.Size = UDim2.fromOffset(24, 22)
+    arrow.TextXAlignment = Enum.TextXAlignment.Center
+
+    local holder = Instance.new("Frame")
+    holder.Position = UDim2.fromOffset(6, 39)
+    holder.Size = UDim2.new(1, -12, 0, 0)
+    holder.AutomaticSize = Enum.AutomaticSize.Y
+    holder.BackgroundTransparency = 1
+    holder.Parent = outer
+
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 6)
+    layout.Parent = holder
+
+    local pad = Instance.new("UIPadding")
+    pad.PaddingBottom = UDim.new(0, 7)
+    pad.Parent = holder
+
+    local open = true
+    header.Activated:Connect(function()
+        open = not open
+        holder.Visible = open
+        arrow.Text = open and "▼" or "▶"
+    end)
+    return holder, outer
+end
+
+local function makeDropdown(parentObj, title, getValues)
+    local wrap = Instance.new("Frame")
+    wrap.Size = UDim2.new(1, 0, 0, 50)
+    wrap.AutomaticSize = Enum.AutomaticSize.Y
+    wrap.BackgroundTransparency = 1
+    wrap.Parent = parentObj
+
+    local titleLabel = label(wrap, title, 11, false)
+    titleLabel.Size = UDim2.new(1, 0, 0, 18)
+
+    local bar = Instance.new("TextButton")
+    bar.Position = UDim2.fromOffset(0, 20)
+    bar.Size = UDim2.new(1, 0, 0, 28)
+    bar.BackgroundColor3 = Color3.fromRGB(12, 18, 27)
+    bar.BorderSizePixel = 0
+    bar.Font = Enum.Font.Gotham
+    bar.TextSize = 11
+    bar.TextColor3 = COLORS.muted
+    bar.TextXAlignment = Enum.TextXAlignment.Left
+    bar.Text = "  aguardando menu original..."
+    bar.AutoButtonColor = false
+    bar.Parent = wrap
+    corner(bar, 6)
+    stroke(bar, COLORS.outline, 0.35)
+
+    local arrow = label(bar, "▼", 11, true)
+    arrow.AnchorPoint = Vector2.new(1, 0)
+    arrow.Position = UDim2.new(1, -5, 0, 3)
+    arrow.Size = UDim2.fromOffset(24, 22)
+    arrow.TextXAlignment = Enum.TextXAlignment.Center
+
+    local listFrame = Instance.new("ScrollingFrame")
+    listFrame.Position = UDim2.fromOffset(0, 51)
+    listFrame.Size = UDim2.new(1, 0, 0, 0)
+    listFrame.BackgroundColor3 = Color3.fromRGB(12, 18, 27)
+    listFrame.BorderSizePixel = 0
+    listFrame.ScrollBarThickness = 3
+    listFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    listFrame.CanvasSize = UDim2.new()
+    listFrame.Visible = false
+    listFrame.Parent = wrap
+    corner(listFrame, 6)
+    stroke(listFrame, COLORS.outline, 0.35)
+
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.Padding = UDim.new(0, 3)
+    listLayout.Parent = listFrame
+
+    local listPad = Instance.new("UIPadding")
+    listPad.PaddingTop = UDim.new(0, 4)
+    listPad.PaddingBottom = UDim.new(0, 4)
+    listPad.PaddingLeft = UDim.new(0, 4)
+    listPad.PaddingRight = UDim.new(0, 4)
+    listPad.Parent = listFrame
+
+    local selected = nil
+    local cached = {}
+    local open = false
+
+    local function close()
+        open = false
+        listFrame.Visible = false
+        listFrame.Size = UDim2.new(1, 0, 0, 0)
+        wrap.Size = UDim2.new(1, 0, 0, 50)
+        arrow.Text = "▼"
+    end
+
+    local function refresh()
+        local ok, values = pcall(getValues)
+        if not ok or type(values) ~= "table" then values = {} end
+
+        local same = #values == #cached
+        if same then
+            for i = 1, #values do
+                if tostring(values[i]) ~= tostring(cached[i]) then same = false; break end
+            end
+        end
+        if same then return end
+
+        cached = {}
+        for i, v in ipairs(values) do cached[i] = tostring(v) end
+
+        for _, child in ipairs(listFrame:GetChildren()) do
+            if child:IsA("TextButton") then child:Destroy() end
+        end
+
+        if #cached == 0 then
+            selected = nil
+            bar.Text = "  aguardando menu original..."
+            close()
+            return
+        end
+
+        if not selected or not table.find(cached, selected) then selected = cached[1] end
+        bar.Text = "  " .. selected
+
+        for _, value in ipairs(cached) do
+            local item = Instance.new("TextButton")
+            item.Size = UDim2.new(1, 0, 0, 25)
+            item.BackgroundColor3 = COLORS.button2
+            item.BorderSizePixel = 0
+            item.Font = Enum.Font.Gotham
+            item.TextSize = 11
+            item.TextColor3 = COLORS.text
+            item.TextXAlignment = Enum.TextXAlignment.Left
+            item.Text = "  " .. value
+            item.AutoButtonColor = false
+            item.Parent = listFrame
+            corner(item, 5)
+
+            item.Activated:Connect(function()
+                selected = value
+                bar.Text = "  " .. value
+                close()
+            end)
+        end
+    end
+
+    bar.Activated:Connect(function()
+        refresh()
+        if #cached == 0 then return end
+        open = not open
+        listFrame.Visible = open
+        arrow.Text = open and "▲" or "▼"
+        if open then
+            local height = math.clamp(#cached * 28 + 8, 36, 190)
+            listFrame.Size = UDim2.new(1, 0, 0, height)
+            wrap.Size = UDim2.new(1, 0, 0, 53 + height)
+        else
+            close()
+        end
+    end)
+
+    state.dropdownRefreshers[#state.dropdownRefreshers + 1] = refresh
+    refresh()
+
+    return {
+        Refresh = refresh,
+        GetValue = function() return selected end,
+    }
+end
+
+local function currentValueText(kind, key)
+    local obj = getControl(kind, key)
+    if not obj then return "<nao carregado>" end
+    return normalizeValueForDiff(readControlValue(obj))
+end
+
+local function makeToggleMapper(parentObj, labelText, key, markerName)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 52)
+    row.BackgroundTransparency = 1
+    row.Parent = parentObj
+
+    local name = label(row, labelText, 11, false)
+    name.Size = UDim2.new(1, 0, 0, 18)
+
+    local b = button(row, "Alternar + mapear", 28)
+    b.Position = UDim2.fromOffset(0, 21)
+    b.Size = UDim2.new(1, 0, 0, 28)
+
+    b.Activated:Connect(function()
+        if not state.active then return end
+        local obj = getControl("TOGGLE", key)
+        if not obj then push("[UI] Toggle nao encontrado: " .. key); return end
+        local before = readControlValue(obj) == true
+        local after = not before
+        mark(markerName .. " | " .. key .. "=" .. tostring(after), targetControlSnapshot("TOGGLE", key))
+        pcall(inspectControl, "TOGGLE", key, true)
+        local ok, err = setToggleValue(key, after)
+        push("[APPLY] TOGGLE " .. key .. " -> " .. tostring(after) .. " | ok=" .. tostring(ok) .. " | " .. clean(err))
+    end)
+end
+
+local function makeOptionMapper(parentObj, labelText, key, markerName, singleForMulti)
+    local dd = makeDropdown(parentObj, labelText, function() return getOptionValues(key) end)
+    local b = button(parentObj, "Aplicar + mapear " .. labelText, 28)
+    b.Activated:Connect(function()
+        if not state.active then return end
+        local selected = dd.GetValue()
+        if not selected then push("[UI] Sem valor disponivel para OPTION " .. key); return end
+        mark(markerName .. " | " .. key .. "=" .. tostring(selected), targetControlSnapshot("OPTION", key))
+        pcall(inspectControl, "OPTION", key, true)
+        local ok, err = setOptionValue(key, selected, singleForMulti ~= false)
+        push("[APPLY] OPTION " .. key .. " -> " .. ser(selected) .. " | ok=" .. tostring(ok) .. " | " .. clean(err))
+    end)
+    return dd
+end
+
+local function makeCurrentValueMapper(parentObj, labelText, kind, key, markerName)
+    local b = button(parentObj, "Mapear valor atual: " .. labelText, 28)
+    b.Activated:Connect(function()
+        if not state.active then return end
+        local value = currentValueText(kind, key)
+        mark(markerName .. " | " .. key .. "=" .. value, targetControlSnapshot(kind, key))
+        pcall(inspectControl, kind, key, true)
+    end)
 end
 
 if parent then
-    local gui=Instance.new("ScreenGui")
-    gui.Name="MAM2ReconRuntimeV2";gui.ResetOnSpawn=false;gui.Parent=parent
-    state.gui=gui
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "MAM2ReconRuntimeV3"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.Parent = parent
+    state.gui = gui
 
-    local cam=workspace.CurrentCamera
-    local vp=cam and cam.ViewportSize or Vector2.new(800,600)
-    local w=math.clamp(math.floor(vp.X*0.48),300,370)
-    local h=math.clamp(math.floor(vp.Y*0.70),300,500)
+    local camera = workspace.CurrentCamera
+    local vp = camera and camera.ViewportSize or Vector2.new(800, 600)
+    local width = math.clamp(math.floor(vp.X * 0.52), 330, 470)
+    local height = math.clamp(math.floor(vp.Y * 0.72), 310, 540)
 
-    local frame=Instance.new("Frame")
-    frame.AnchorPoint=Vector2.new(.5,.5);frame.Position=UDim2.fromScale(.5,.5)
-    frame.Size=UDim2.fromOffset(w,h);frame.BackgroundColor3=Color3.fromRGB(15,22,33)
-    frame.BorderSizePixel=0;frame.Parent=gui;corner(frame,12)
-    local st=Instance.new("UIStroke");st.Color=Color3.fromRGB(62,96,138);st.Transparency=.25;st.Parent=frame
+    local frame = Instance.new("Frame")
+    frame.AnchorPoint = Vector2.new(0.5, 0.5)
+    frame.Position = UDim2.fromScale(0.5, 0.5)
+    frame.Size = UDim2.fromOffset(width, height)
+    frame.BackgroundColor3 = COLORS.bg
+    frame.BorderSizePixel = 0
+    frame.Parent = gui
+    corner(frame, 12)
+    stroke(frame, COLORS.outline, 0.18)
 
-    local header=Instance.new("Frame")
-    header.Size=UDim2.new(1,0,0,42);header.BackgroundColor3=Color3.fromRGB(21,32,48)
-    header.BorderSizePixel=0;header.Active=true;header.Parent=frame;corner(header,12)
-    local fix=Instance.new("Frame");fix.Position=UDim2.new(0,0,1,-12)
-    fix.Size=UDim2.new(1,0,0,12);fix.BackgroundColor3=header.BackgroundColor3
-    fix.BorderSizePixel=0;fix.Parent=header
+    local header = Instance.new("Frame")
+    header.Size = UDim2.new(1, 0, 0, 42)
+    header.BackgroundColor3 = COLORS.header
+    header.BorderSizePixel = 0
+    header.Active = true
+    header.Parent = frame
+    corner(header, 12)
 
-    local title=label(header,"MAM2 | Mapeador Runtime V2.1",9,14);title.Font=Enum.Font.GothamBold
-    title.Size=UDim2.new(1,-66,0,22)
+    local title = label(header, "MAM2 | Mapeador detalhado V3", 13, true)
+    title.Position = UDim2.fromOffset(11, 9)
+    title.Size = UDim2.new(1, -58, 0, 22)
 
-    -- Minimize: esconde apenas o painel. A captura continua ativa.
-    local minimize=Instance.new("TextButton")
-    minimize.Name="MinimizeButton"
-    minimize.AnchorPoint=Vector2.new(1,0)
-    minimize.Position=UDim2.new(1,-8,0,7)
-    minimize.Size=UDim2.fromOffset(28,28)
-    minimize.BackgroundColor3=Color3.fromRGB(29,47,72)
-    minimize.BorderSizePixel=0
-    minimize.Font=Enum.Font.GothamBold
-    minimize.TextSize=18
-    minimize.TextColor3=Color3.fromRGB(245,248,252)
-    minimize.Text="—"
-    minimize.AutoButtonColor=false
-    minimize.Parent=header
-    corner(minimize,8)
+    local minimize = Instance.new("TextButton")
+    minimize.Name = "MinimizeButton"
+    minimize.AnchorPoint = Vector2.new(1, 0)
+    minimize.Position = UDim2.new(1, -8, 0, 7)
+    minimize.Size = UDim2.fromOffset(28, 28)
+    minimize.BackgroundColor3 = COLORS.button
+    minimize.BorderSizePixel = 0
+    minimize.Font = Enum.Font.GothamBold
+    minimize.TextSize = 18
+    minimize.TextColor3 = COLORS.text
+    minimize.Text = "—"
+    minimize.AutoButtonColor = false
+    minimize.Parent = header
+    corner(minimize, 8)
 
-    -- Flutuante pequeno e circular: aparece somente quando minimizado.
-    local floating=Instance.new("TextButton")
-    floating.Name="MAM2ReconFloatingToggle"
-    floating.Position=UDim2.fromOffset(18,78)
-    floating.Size=UDim2.fromOffset(42,42)
-    floating.BackgroundColor3=Color3.fromRGB(21,32,48)
-    floating.BorderSizePixel=0
-    floating.Font=Enum.Font.GothamBold
-    floating.TextSize=15
-    floating.TextColor3=Color3.fromRGB(106,173,255)
-    floating.Text="M"
-    floating.AutoButtonColor=false
-    floating.Visible=false
-    floating.ZIndex=20
-    floating.Parent=gui
-    corner(floating,21)
-    local floatingStroke=Instance.new("UIStroke")
-    floatingStroke.Color=Color3.fromRGB(62,96,138)
-    floatingStroke.Transparency=.12
-    floatingStroke.Thickness=1
-    floatingStroke.Parent=floating
+    local floating = Instance.new("TextButton")
+    floating.Name = "MAM2ReconFloatingToggle"
+    floating.Position = UDim2.fromOffset(18, 78)
+    floating.Size = UDim2.fromOffset(42, 42)
+    floating.BackgroundColor3 = COLORS.header
+    floating.BorderSizePixel = 0
+    floating.Font = Enum.Font.GothamBold
+    floating.TextSize = 14
+    floating.TextColor3 = Color3.fromRGB(106, 173, 255)
+    floating.Text = "M"
+    floating.AutoButtonColor = false
+    floating.Visible = false
+    floating.ZIndex = 50
+    floating.Parent = gui
+    corner(floating, 21)
+    stroke(floating, COLORS.accent, 0.05)
 
-    local floatingSuppressUntil=0
-    local function setMinimized(v)
-        frame.Visible=not v
-        floating.Visible=v
+    local floatingSuppressUntil = 0
+    local function setMinimized(value)
+        frame.Visible = not value
+        floating.Visible = value
     end
-
-    minimize.Activated:Connect(function()
-        setMinimized(true)
-    end)
-
+    minimize.Activated:Connect(function() setMinimized(true) end)
     floating.Activated:Connect(function()
-        if os.clock()<floatingSuppressUntil then return end
+        if os.clock() < floatingSuppressUntil then return end
         setMinimized(false)
     end)
 
-    -- O flutuante é arrastável por mouse/toque.
-    -- Depois de arrastar, o mesmo toque não reabre o menu acidentalmente.
     do
-        local draggingFloat=false
-        local floatStartInput=nil
-        local floatStartPos=nil
-        local movedFloat=false
-
-        floating.InputBegan:Connect(function(i)
-            if i.UserInputType==Enum.UserInputType.MouseButton1
-                or i.UserInputType==Enum.UserInputType.Touch then
-                draggingFloat=true
-                movedFloat=false
-                floatStartInput=i.Position
-                floatStartPos=floating.Position
+        local dragging = false
+        local startInput, startPos
+        local moved = false
+        floating.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true; moved = false; startInput = input.Position; startPos = floating.Position
             end
         end)
-
-        UIS.InputChanged:Connect(function(i)
-            if not draggingFloat then return end
-            if i.UserInputType~=Enum.UserInputType.MouseMovement
-                and i.UserInputType~=Enum.UserInputType.Touch then return end
-
-            local d=i.Position-floatStartInput
-            if d.Magnitude>6 then movedFloat=true end
-
-            local camNow=workspace.CurrentCamera
-            local vpNow=camNow and camNow.ViewportSize or Vector2.new(800,600)
-            local x=math.clamp(floatStartPos.X.Offset+d.X,2,math.max(2,vpNow.X-44))
-            local y=math.clamp(floatStartPos.Y.Offset+d.Y,2,math.max(2,vpNow.Y-44))
-            floating.Position=UDim2.fromOffset(x,y)
+        UIS.InputChanged:Connect(function(input)
+            if not dragging then return end
+            if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
+            local delta = input.Position - startInput
+            if delta.Magnitude > 6 then moved = true end
+            local cam = workspace.CurrentCamera
+            local v = cam and cam.ViewportSize or Vector2.new(800, 600)
+            local x = math.clamp(startPos.X.Offset + delta.X, 2, math.max(2, v.X - 44))
+            local y = math.clamp(startPos.Y.Offset + delta.Y, 2, math.max(2, v.Y - 44))
+            floating.Position = UDim2.fromOffset(x, y)
         end)
-
-        UIS.InputEnded:Connect(function(i)
-            if i.UserInputType==Enum.UserInputType.MouseButton1
-                or i.UserInputType==Enum.UserInputType.Touch then
-                if draggingFloat and movedFloat then
-                    floatingSuppressUntil=os.clock()+0.20
-                end
-                draggingFloat=false
+        UIS.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                if dragging and moved then floatingSuppressUntil = os.clock() + 0.20 end
+                dragging = false
             end
         end)
     end
-    local status=label(frame,"Status: PARADO",50,12)
-    local counter=label(frame,"Remote: 0 | Prompt: 0 | Internos: 0",72,11)
-    counter.TextColor3=Color3.fromRGB(177,191,210)
 
-    local scroll=Instance.new("ScrollingFrame")
-    scroll.Position=UDim2.new(0,10,0,98);scroll.Size=UDim2.new(1,-20,1,-108)
-    scroll.BackgroundTransparency=1;scroll.BorderSizePixel=0;scroll.ScrollBarThickness=4
-    scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y;scroll.CanvasSize=UDim2.new();scroll.Parent=frame
-    local list=Instance.new("UIListLayout");list.Padding=UDim.new(0,7);list.Parent=scroll
-    local pad=Instance.new("UIPadding");pad.PaddingLeft=UDim.new(0,2);pad.PaddingRight=UDim.new(0,2)
-    pad.PaddingBottom=UDim.new(0,8);pad.Parent=scroll
+    local status = label(frame, "Status: PARADO", 11, false)
+    status.Position = UDim2.fromOffset(12, 49)
+    status.Size = UDim2.new(1, -24, 0, 20)
 
-    local start=button(scroll,"Iniciar mapeamento")
-    local markers={
-        {"Boulder Farm / mineracao","BOULDER FARM / MINERACAO"},
-        {"Auto Near Collect","AUTO NEAR COLLECT / MINERACAO PROXIMA"},
-        {"Auto Pickup / cristais","AUTO PICKUP / CRISTAIS"},
-        {"Money Farm / venda","MONEY FARM / VENDA / FORTUNE"},
-        {"Auto Favorite","AUTO FAVORITE / FAVORITAR CRISTAIS"},
-        {"Dupe Crystal / Dupe Zone","DUPE CRYSTAL / DUPE ZONE VISUAL"},
-        {"Placement / Runes","PLACEMENT / AUTO PLACE / RUNES"},
-        {"Player / Visuals parciais","PLAYER / VISUALS PARCIAIS / RAGDOLL / CAMERA / OPTIMIZE"},
-    }
-    for _,m in ipairs(markers) do
-        local b=button(scroll,"Marcar: "..m[1])
-        b.Activated:Connect(function()
-            if not state.active then status.Text="Status: inicie o mapeamento primeiro";return end
-            mark(m[2]);status.Text="Status: MAPEANDO | "..m[1]
-        end)
-    end
-    local inspect=button(scroll,"Inspecionar internos")
-    local save=button(scroll,"Finalizar e salvar")
+    local counter = label(frame, "Remote 0 | Mudanças 0 | Bindings 0", 10, false)
+    counter.Position = UDim2.fromOffset(12, 68)
+    counter.Size = UDim2.new(1, -24, 0, 18)
+    counter.TextColor3 = COLORS.muted
 
-    start.Activated:Connect(function()
-        if begin() then status.Text="Status: MAPEANDO | GERAL / LOADER";start.Text="Mapeamento em andamento" end
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Position = UDim2.fromOffset(10, 92)
+    scroll.Size = UDim2.new(1, -20, 1, -102)
+    scroll.BackgroundTransparency = 1
+    scroll.BorderSizePixel = 0
+    scroll.ScrollBarThickness = 4
+    scroll.ScrollBarImageColor3 = COLORS.accent
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scroll.CanvasSize = UDim2.new()
+    scroll.Parent = frame
+
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 7)
+    layout.Parent = scroll
+
+    local topSection = section(scroll, "Controle da sessão")
+    local startButton = button(topSection, "Iniciar mapeamento", 30)
+    local refreshButton = button(topSection, "Atualizar controles do menu original", 30)
+    local snapshotButton = button(topSection, "Snapshot completo agora", 30)
+
+    startButton.Activated:Connect(function()
+        if begin() then
+            status.Text = "Status: MAPEANDO | carregue o menu original"
+            startButton.Text = "Mapeamento em andamento"
+        end
     end)
-    inspect.Activated:Connect(function()
+
+    refreshButton.Activated:Connect(function()
+        for _, refresh in ipairs(state.dropdownRefreshers) do pcall(refresh) end
+        if state.active then snapshotControls("REFRESH MANUAL", nil); status.Text = "Status: controles atualizados" end
+    end)
+
+    snapshotButton.Activated:Connect(function()
+        if state.active then snapshotControls("SNAPSHOT MANUAL", nil); status.Text = "Status: snapshot registrado" end
+    end)
+
+    local farm = section(scroll, "Farm / Boulder Farm")
+    makeOptionMapper(farm, "Targets (um por vez)", "FarmTargets", "BOULDER / TARGET", true)
+    makeToggleMapper(farm, "Auto Farm", "AutoFarmBoulders", "BOULDER / AUTO FARM")
+    makeToggleMapper(farm, "Server Hop se não encontrar Boulder", "HopOnNoBoulders", "BOULDER / HOP SEM BOULDER")
+    makeToggleMapper(farm, "Server Hop se travar", "StuckHop", "BOULDER / HOP TRAVADO")
+    makeOptionMapper(farm, "Modo do Server Hop", "HopServerMode", "BOULDER / HOP MODE", false)
+
+    local boulderSettings = section(scroll, "Boulder Farm Settings")
+    makeOptionMapper(boulderSettings, "Filtro de Boulders", "BoulderFilter", "BOULDER / FILTER", true)
+    makeOptionMapper(boulderSettings, "Direção da posição", "BoulderStanceDirection", "BOULDER / STANCE DIRECTION", false)
+    makeCurrentValueMapper(boulderSettings, "Distância da posição", "OPTION", "BoulderStanceDistance", "BOULDER / STANCE DISTANCE")
+    makeOptionMapper(boulderSettings, "Limpar território para", "ClearTerritoryFor", "BOULDER / CLEAR TERRITORY", true)
+    makeCurrentValueMapper(boulderSettings, "Passadas de limpeza", "OPTION", "ClearPasses", "BOULDER / CLEAR PASSES")
+    makeCurrentValueMapper(boulderSettings, "Quantidade de pontos", "OPTION", "ClearSpotsCount", "BOULDER / CLEAR SPOTS")
+    makeCurrentValueMapper(boulderSettings, "Raio de limpeza", "OPTION", "ClearSpreadRadius", "BOULDER / CLEAR RADIUS")
+    makeCurrentValueMapper(boulderSettings, "Velocidade de Glide", "OPTION", "ClearGlideSpeed", "BOULDER / CLEAR GLIDE")
+    makeOptionMapper(boulderSettings, "Modo da picareta", "PickaxeMode", "BOULDER / PICKAXE MODE", false)
+
+    local collect = section(scroll, "Coleta / Auto Near / Auto Pickup")
+    makeToggleMapper(collect, "Auto Near Collect", "AutoNearCollect", "AUTO NEAR COLLECT")
+    makeToggleMapper(collect, "Auto Pickup", "AutoPickup", "AUTO PICKUP")
+    makeOptionMapper(collect, "Blacklist de raridade", "PickupRarityBlacklist", "AUTO PICKUP / RARITY BLACKLIST", true)
+    makeCurrentValueMapper(collect, "Tamanho do lote", "OPTION", "PkBatch", "AUTO PICKUP / BATCH")
+    makeCurrentValueMapper(collect, "Delay", "OPTION", "PkDelay", "AUTO PICKUP / DELAY")
+    makeOptionMapper(collect, "Filtro de mutação", "PkMutFlt", "AUTO PICKUP / MUTATION FILTER", true)
+    makeOptionMapper(collect, "Filtro de tamanho", "PkSzFlt", "AUTO PICKUP / SIZE FILTER", true)
+    makeToggleMapper(collect, "Ignorar mochila cheia", "PkIgnFull", "AUTO PICKUP / IGNORE FULL")
+
+    local money = section(scroll, "Money Farm / Venda")
+    makeToggleMapper(money, "Money Farm", "AutoFarmMoney", "MONEY FARM")
+    makeToggleMapper(money, "Auto Sell", "MoneyAutoSell", "MONEY / AUTO SELL")
+    makeCurrentValueMapper(money, "Limite para vender", "OPTION", "MoneySellThreshold", "MONEY / SELL THRESHOLD")
+    makeToggleMapper(money, "Colocar Fortune Rune", "MoneyPlaceFortuneRune", "MONEY / PLACE FORTUNE")
+    makeToggleMapper(money, "Remover Fortune Rune", "MoneyForceRemoveFortuneRune", "MONEY / REMOVE FORTUNE")
+    makeToggleMapper(money, "Voltar após venda", "MoneySellTeleportBack", "MONEY / TELEPORT BACK")
+    makeToggleMapper(money, "Reentrar após venda", "MoneyRejoinAfterSell", "MONEY / REJOIN")
+    makeToggleMapper(money, "Congelar durante venda", "SellFreeze", "MONEY / SELL FREEZE")
+    makeCurrentValueMapper(money, "Segundos congelado", "OPTION", "SellFreezeSecs", "MONEY / FREEZE SECONDS")
+
+    local favorite = section(scroll, "Auto Favorite")
+    makeToggleMapper(favorite, "Auto Favorite", "AutoFavorite", "FAVORITE / AUTO")
+    makeToggleMapper(favorite, "Favoritar por raridade", "AutoFavRarity", "FAVORITE / RARITY")
+    makeCurrentValueMapper(favorite, "Luck mínimo", "OPTION", "AutoFavoriteLuck", "FAVORITE / MIN LUCK")
+    makeCurrentValueMapper(favorite, "Valor mínimo", "OPTION", "AutoFavoriteValue", "FAVORITE / MIN VALUE")
+    makeOptionMapper(favorite, "Raridades", "FavRaritySelect", "FAVORITE / RARITY SELECT", true)
+
+    local dupe = section(scroll, "Dupe / Duplicação")
+    makeToggleMapper(dupe, "Player Dupe Nuker", "PlayerDupeNuker", "DUPE / PLAYER NUKER")
+    makeToggleMapper(dupe, "Dupe Swing", "DupeSwing", "DUPE / SWING")
+    makeToggleMapper(dupe, "Visualizar zona do Dupe", "DupeZnVis", "DUPE / ZONE VISUAL")
+
+    local placement = section(scroll, "Placement / Cristais / Runas")
+    makeToggleMapper(placement, "Auto Place Crystals", "AutoPlaceCrystals", "PLACE / CRYSTALS")
+    makeToggleMapper(placement, "Auto Place Best", "AutoPlaceCrystalsBest", "PLACE / BEST")
+    makeToggleMapper(placement, "Auto Place Runes", "AutoPlaceRunes", "PLACE / RUNES")
+    makeToggleMapper(placement, "Mostrar grade", "ShowPlacementGrid", "PLACE / GRID")
+    makeToggleMapper(placement, "Instant Plot Take", "InstantPlotTake", "PLACE / INSTANT TAKE")
+    makeOptionMapper(placement, "Prioridade", "PlacePriorityMode", "PLACE / PRIORITY", false)
+    makeOptionMapper(placement, "Prioridade Best", "PlaceBestPriorityMode", "PLACE / BEST PRIORITY", false)
+    makeCurrentValueMapper(placement, "Intervalo", "OPTION", "PlaceInterval", "PLACE / INTERVAL")
+    makeCurrentValueMapper(placement, "Luck mínimo", "OPTION", "PlaceMinLuck", "PLACE / MIN LUCK")
+    makeCurrentValueMapper(placement, "Dinheiro mínimo", "OPTION", "PlaceMinMoney", "PLACE / MIN MONEY")
+    makeCurrentValueMapper(placement, "Tamanho mínimo", "OPTION", "PlaceMinSize", "PLACE / MIN SIZE")
+    makeCurrentValueMapper(placement, "Altura", "OPTION", "PlacementHeight", "PLACE / HEIGHT")
+    makeCurrentValueMapper(placement, "Runas por vez", "OPTION", "RunePlaceAtOnce", "PLACE / RUNES AT ONCE")
+    makeCurrentValueMapper(placement, "Intervalo de Runas", "OPTION", "RunePlaceInterval", "PLACE / RUNE INTERVAL")
+
+    local partial = section(scroll, "Player / Visuais que ainda precisam de binding")
+    makeToggleMapper(partial, "No Ragdoll", "misc_no_ragdoll", "PLAYER / NO RAGDOLL")
+    makeToggleMapper(partial, "No Camera Shake", "misc_no_camera_shake", "PLAYER / NO CAMERA SHAKE")
+    makeToggleMapper(partial, "Optimize Crystals", "misc_optimize_crystals", "VISUAL / OPTIMIZE CRYSTALS")
+    makeToggleMapper(partial, "No Fall Damage", "misc_no_fall_damage", "PLAYER / NO FALL DAMAGE")
+    makeToggleMapper(partial, "God Mode", "misc_god_mode", "PLAYER / GOD MODE")
+
+    local generic = section(scroll, "Navegador genérico de qualquer controle")
+    local kindDD = makeDropdown(generic, "Tipo de controle", function() return {"OPTION", "TOGGLE"} end)
+    local keyDD = makeDropdown(generic, "Controle", function()
+        local kind = kindDD.GetValue() or "OPTION"
+        local map = getControlMap(kind)
+        local out = {}
+        if type(map) == "table" then
+            for key in pairs(map) do out[#out + 1] = tostring(key) end
+            table.sort(out)
+        end
+        return out
+    end)
+    local valueDD = makeDropdown(generic, "Valor disponível (quando houver)", function()
+        local kind = kindDD.GetValue()
+        local key = keyDD.GetValue()
+        if kind == "OPTION" and key then return getOptionValues(key) end
+        return {}
+    end)
+
+    local genericInspect = button(generic, "Marcar + inspecionar controle", 30)
+    genericInspect.Activated:Connect(function()
+        if not state.active then return end
+        local kind, key = kindDD.GetValue(), keyDD.GetValue()
+        if not kind or not key then return end
+        mark("GENERIC / " .. kind .. " / " .. key, targetControlSnapshot(kind, key))
+        pcall(inspectControl, kind, key, true)
+    end)
+
+    local genericApply = button(generic, "Aplicar valor selecionado + mapear", 30)
+    genericApply.Activated:Connect(function()
+        if not state.active then return end
+        local kind, key = kindDD.GetValue(), keyDD.GetValue()
+        if not kind or not key then return end
+        if kind == "TOGGLE" then
+            local obj = getControl(kind, key)
+            if not obj then return end
+            local after = not (readControlValue(obj) == true)
+            mark("GENERIC / TOGGLE / " .. key .. "=" .. tostring(after), targetControlSnapshot(kind, key))
+            pcall(inspectControl, kind, key, true)
+            setToggleValue(key, after)
+        else
+            local selected = valueDD.GetValue()
+            if selected then
+                mark("GENERIC / OPTION / " .. key .. "=" .. selected, targetControlSnapshot(kind, key))
+                pcall(inspectControl, kind, key, true)
+                setOptionValue(key, selected, true)
+            else
+                mark("GENERIC / OPTION / " .. key .. " / CURRENT", targetControlSnapshot(kind, key))
+                pcall(inspectControl, kind, key, true)
+            end
+        end
+    end)
+
+    local finalSection = section(scroll, "Finalização")
+    local inspectButton = button(finalSection, "Inspecionar bindings / callbacks", 32)
+    local saveButton = button(finalSection, "Finalizar e salvar arquivo", 32)
+
+    inspectButton.Activated:Connect(function()
         if not state.active or state.inspecting then return end
-        status.Text="Status: INSPECIONANDO INTERNOS..."
+        status.Text = "Status: INSPECIONANDO BINDINGS..."
         task.spawn(function()
-            local ok,e=pcall(inspectInternals)
-            if not ok then push("ERRO INSPECAO: "..clean(e)) end
-            if state.active then status.Text="Status: MAPEANDO | internos concluidos" end
+            local ok, err = pcall(inspectInternals)
+            if not ok then push("ERRO INSPECAO: " .. clean(err)) end
+            if state.active then status.Text = "Status: MAPEANDO | inspeção concluída" end
         end)
     end)
-    save.Activated:Connect(function()
-        if state.inspecting then status.Text="Status: aguarde a inspecao terminar";return end
-        local ok,r=finish()
-        if ok then status.Text="Status: FINALIZADO E SALVO";save.Text="Arquivo salvo"
-        else status.Text="Status: "..tostring(r) end
+
+    saveButton.Activated:Connect(function()
+        if state.inspecting then status.Text = "Status: aguarde a inspeção terminar"; return end
+        local ok, result = finish()
+        if ok then
+            status.Text = "Status: FINALIZADO E SALVO"
+            saveButton.Text = "Arquivo salvo: " .. tostring(result)
+        else
+            status.Text = "Status: " .. tostring(result)
+        end
     end)
 
     task.spawn(function()
         while gui.Parent do
-            counter.Text=string.format("Remote: %d | Prompt: %d | Internos: %d",
-                state.remoteCount,state.promptCount,state.internalTables+state.internalFunctions)
-            task.wait(.25)
+            counter.Text = string.format(
+                "Remote %d | Mudanças %d | Bindings %d",
+                state.remoteCount,
+                state.controlChangeCount,
+                state.callbackCount
+            )
+            task.wait(0.25)
         end
     end)
 
-    local dragging,dragInput,dragStart,startPos=false,nil,nil,nil
-    header.InputBegan:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-            dragging=true;dragStart=i.Position;startPos=frame.Position
-            i.Changed:Connect(function()
-                if i.UserInputState==Enum.UserInputState.End or i.UserInputState==Enum.UserInputState.Cancel then dragging=false end
-            end)
-        end
-    end)
-    header.InputChanged:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch then dragInput=i end
-    end)
-    UIS.InputChanged:Connect(function(i)
-        if dragging and i==dragInput then
-            local d=i.Position-dragStart
-            frame.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)
-        end
-    end)
+    do
+        local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
+        header.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                dragStart = input.Position
+                startPos = frame.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End or input.UserInputState == Enum.UserInputState.Cancel then dragging = false end
+                end)
+            end
+        end)
+        header.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+        end)
+        UIS.InputChanged:Connect(function(input)
+            if dragging and input == dragInput then
+                local delta = input.Position - dragStart
+                frame.Position = UDim2.new(
+                    startPos.X.Scale,
+                    startPos.X.Offset + delta.X,
+                    startPos.Y.Scale,
+                    startPos.Y.Offset + delta.Y
+                )
+            end
+        end)
+    end
 end
 
-print("[MAM2-RECON] PRONTO. Toque em Iniciar mapeamento.")
+print("[MAM2-RECON] Mapeador detalhado V3 pronto.")
 pcall(function()
-    StarterGui:SetCore("SendNotification",{Title="MAM2 Recon",Text="Mapeador V2.1 pronto.",Duration=5})
+    StarterGui:SetCore("SendNotification", {
+        Title = "MAM2 Recon",
+        Text = "Mapeador detalhado V3 pronto. Inicie antes do menu original.",
+        Duration = 6,
+    })
 end)
