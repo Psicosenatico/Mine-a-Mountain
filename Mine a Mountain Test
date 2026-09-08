@@ -16,7 +16,7 @@ local function reportError(message)
 end
 
 local BASE = "https://raw.githubusercontent.com/Psicosenatico/Mine-a-Mountain/main/mam2_v3_parts/"
-local PART_COUNT = 13
+local PART_COUNT = 15
 local parts = table.create(PART_COUNT)
 
 for i = 1, PART_COUNT do
@@ -46,6 +46,8 @@ local REQUIRED = {
     "MAM2_RECOVERED_CLIENT_BINDINGS_V1",
     "MAM2_AUDITED_RECOVERED_BINDINGS_V2",
     "MAM2_AUDITED_RECOVERED_ACTIONS_V2",
+    "MAM2_AUDITED_LOCAL_BINDINGS_V3",
+    "MAM2_AUDIT_FINALIZATION_V3_1",
 }
 
 for _, marker in ipairs(REQUIRED) do
