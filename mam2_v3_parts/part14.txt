@@ -1,0 +1,560 @@
+
+-- MAM2_AUDITED_LOCAL_BINDINGS_V3
+-- Segunda auditoria funcional: somente bindings locais suportados por dados já capturados.
+local V3=S.AuditLocalV3 or {
+    pickup={rarity={},mutations={},sizes={},clock=0,claimed=setmetatable({},{__mode="k"})},
+    boulder={enabled=false,highlight=true,size=60,trans=.55,filter={},cache=setmetatable({},{__mode="k"}),clock=0},
+    runeTpClock=0,
+    aimTeleport=false,
+    clickTeleport=false,
+    clickTeleportKey="LeftControl",
+    autoBase=false,
+    disableAnnounce=false,
+    announceCats={},
+}
+S.AuditLocalV3=V3
+
+local function v3Set(v)
+    return setof(v)
+end
+
+local RARITY_BY_TIER={[1]="Common",[2]="Uncommon",[3]="Rare",[4]="Epic",[5]="Legendary",[6]="Mythic",[7]="Empyrean",[8]="Pulsar",[9]="Quasar"}
+local RARITY_LABEL={
+    ["C / Common"]="Common",["U / Uncommon"]="Uncommon",["R / Rare"]="Rare",
+    ["E / Epic"]="Epic",["L / Legendary"]="Legendary",["M / Mythic"]="Mythic",
+    ["E / Empyrean"]="Empyrean",["P / Pulsar"]="Pulsar",["Q / Quasar"]="Quasar",
+}
+local function inheritedAttr(x,n)
+    local v=getAttr(x,n)
+    if v==nil and x and x.Parent then v=getAttr(x.Parent,n) end
+    return v
+end
+local function rarityName(x)
+    local tn=inheritedAttr(x,"TierName")
+    if tn~=nil then
+        local s=tostring(tn)
+        for _,name in pairs(RARITY_BY_TIER) do
+            if s:lower():find(name:lower(),1,true) then return name end
+        end
+    end
+    local tier=tonumber(inheritedAttr(x,"Tier"))
+    return tier and RARITY_BY_TIER[tier] or nil
+end
+local function mutationSet(x)
+    local out={}
+    local function add(v)
+        if v==nil then return end
+        if type(v)=="string" then
+            for token in v:gmatch("[^,;|]+") do
+                token=token:match("^%s*(.-)%s*$")
+                if token~="" then out[token]=true end
+            end
+        elseif type(v)=="table" then
+            for k,a in pairs(v) do
+                if a==true then out[tostring(k)]=true else out[tostring(a)]=true end
+            end
+        end
+    end
+    add(inheritedAttr(x,"Mutation"))
+    add(inheritedAttr(x,"ExtraMutations"))
+    return out
+end
+local function selectedMutationPass(x)
+    if next(V3.pickup.mutations)==nil then return true end
+    local got=mutationSet(x)
+    for label in pairs(V3.pickup.mutations) do
+        local wanted=tostring(label)
+        for name in pairs(got) do
+            if name:lower()==wanted:lower() then return true end
+        end
+    end
+    return false
+end
+local function selectedRarityPass(x)
+    local r=rarityName(x)
+    if not r then return true end
+    for label in pairs(V3.pickup.rarity) do
+        local mapped=RARITY_LABEL[label] or label
+        if tostring(mapped):lower()==r:lower() then return false end
+    end
+    return true
+end
+local function crystalValueV3(x)
+    return tonumber(inheritedAttr(x,"Value")) or 0
+end
+local function crystalLuckV3(x)
+    return tonumber(inheritedAttr(x,"LuckBoost")) or 0
+end
+local function crystalWeightV3(x)
+    return tonumber(inheritedAttr(x,"WeightKg")) or 0
+end
+
+-- Auto Pickup: aplica os filtros cuja semântica foi recuperada do original.
+-- O filtro de tamanho é preservado no estado, mas não é aplicado por heurística:
+-- a função sizePasses original foi capturada apenas como closure virtualizada.
+KNOWN_OPTIONS.PickupRarityBlacklist=function(v)V3.pickup.rarity=v3Set(v)end
+KNOWN_OPTIONS.PkMutFlt=function(v)V3.pickup.mutations=v3Set(v)end
+KNOWN_OPTIONS.PkSzFlt=function(v)V3.pickup.sizes=v3Set(v)end
+KNOWN_OPTIONS.PkBatch=function(v)S.PICK.burst=math.clamp(math.floor(tonumber(v)or 12),1,100)end
+KNOWN_OPTIONS.PkDelay=function(v)S.PICK.cooldown=math.max(.02,tonumber(v)or .12)end
+KNOWN_TOGGLES.PkIgnFull=function(v)V3.pickup.ignoreFull=v==true end
+V3.pickup.rarity=v3Set(UIState.values.PickupRarityBlacklist)
+V3.pickup.mutations=v3Set(UIState.values.PkMutFlt)
+V3.pickup.sizes=v3Set(UIState.values.PkSzFlt)
+S.PICK.burst=math.clamp(math.floor(tonumber(UIState.values.PkBatch)or S.PICK.burst or 12),1,100)
+S.PICK.cooldown=math.max(.02,tonumber(UIState.values.PkDelay)or S.PICK.cooldown or .12)
+
+local function pickupCandidatesV3(origin)
+    local out,seen={},{}
+    local op=OverlapParams.new()
+    op.FilterType=Enum.RaycastFilterType.Exclude
+    op.FilterDescendantsInstances={char()}
+    local ok,parts=pcall(Workspace.GetPartBoundsInRadius,Workspace,origin,S.PICK.range+S.PICK.pad,op)
+    if not ok or type(parts)~="table" then return out end
+    local now=os.clock()
+    for _,p in ipairs(parts) do
+        local x=crystalPart(p)
+        if x and not seen[x] then
+            seen[x]=true
+            local collected=inheritedAttr(x,"Collected")
+            local last=V3.pickup.claimed[x]
+            if collected~=true
+                and selectedRarityPass(x)
+                and selectedMutationPass(x)
+                and (not last or now-last>=S.PICK.retry) then
+                local d=(x.Position-origin).Magnitude
+                if d<=S.PICK.range then
+                    local value=crystalValueV3(x)
+                    local luck=crystalLuckV3(x)
+                    out[#out+1]={inst=x,score=value*1000+luck*100,distance=d,weight=crystalWeightV3(x)}
+                end
+            end
+        end
+    end
+    table.sort(out,function(a,b)
+        if a.score==b.score then return a.distance<b.distance end
+        return a.score>b.score
+    end)
+    return out
+end
+
+local filteredPickupActive=false
+KNOWN_TOGGLES.AutoPickup=function(v)
+    filteredPickupActive=v==true
+    -- Impede o loop antigo de coletar sem respeitar os novos filtros.
+    S.AutoPickup=false
+end
+track(RunService.Heartbeat:Connect(function(dt)
+    if S.Destroyed or not filteredPickupActive then return end
+    V3.pickup.clock+=dt
+    if V3.pickup.clock<S.PICK.cooldown then return end
+    V3.pickup.clock=0
+    local r=root()
+    if not r then return end
+    local list=pickupCandidatesV3(r.Position)
+    local n=0
+    for _,q in ipairs(list) do
+        if n>=S.PICK.burst then break end
+        local ok=false
+        if S.FirePrompt then
+            local p=promptOf(q.inst)
+            if p then ok=S.FirePrompt(p)==true end
+        end
+        if not ok then ok=grabCrystalLocal(q.inst) end
+        if ok then
+            V3.pickup.claimed[q.inst]=os.clock()
+            n+=1
+        end
+    end
+end))
+
+-- Boulder ESP: os cinco tipos e os setters foram observados no runtime.
+local BOULDER_KIND={mossite="Mossite",voltite="Voltite",gildrite="Gildrite",rimeveil="Rimeveil",nocturnite="Nocturnite"}
+local function boulderModel(x)
+    local p=x
+    for _=1,7 do
+        if not p or p==Workspace then break end
+        local low=p.Name:lower()
+        for token,kind in pairs(BOULDER_KIND) do
+            if low:find(token,1,true) then
+                if p:IsA("Model") or p:IsA("BasePart") then return p,kind end
+            end
+        end
+        p=p.Parent
+    end
+end
+local function boulderAnchor(x)
+    if not x then return nil end
+    if x:IsA("BasePart") then return x end
+    if x:IsA("Model") then
+        return x.PrimaryPart or x:FindFirstChildWhichIsA("BasePart",true)
+    end
+end
+local function boulderFilterAllows(kind)
+    if next(V3.boulder.filter)==nil then return true end
+    return V3.boulder.filter[kind]==true
+end
+local function clearBoulderEsp()
+    for obj,e in pairs(V3.boulder.cache) do
+        if type(e)=="table" then
+            pcall(function()if e.gui then e.gui:Destroy()end end)
+            pcall(function()if e.hl then e.hl:Destroy()end end)
+        end
+        V3.boulder.cache[obj]=nil
+    end
+end
+local function ensureBoulderEsp(obj,kind)
+    local anchor=boulderAnchor(obj)
+    if not anchor then return end
+    local e=V3.boulder.cache[obj]
+    if not e then
+        local bg=Instance.new("BillboardGui")
+        bg.Name="MAM2_BoulderEsp"
+        bg.AlwaysOnTop=true
+        bg.LightInfluence=0
+        bg.ResetOnSpawn=false
+        bg.StudsOffsetWorldSpace=Vector3.new(0,3.5,0)
+        bg.Size=UDim2.fromOffset(180,32)
+        bg.Adornee=anchor
+        bg.Parent=gui
+        local tx=Instance.new("TextLabel")
+        tx.BackgroundTransparency=1
+        tx.Size=UDim2.fromScale(1,1)
+        tx.Font=Enum.Font.Code
+        tx.TextStrokeTransparency=.15
+        tx.TextColor3=COLORS.Font
+        tx.Text=kind
+        tx.Parent=bg
+        local hl=Instance.new("Highlight")
+        hl.Name="MAM2_BoulderHighlight"
+        hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+        hl.Adornee=obj
+        hl.FillColor=COLORS.Accent
+        hl.OutlineColor=COLORS.Accent
+        hl.Parent=gui
+        e={gui=bg,label=tx,hl=hl,kind=kind}
+        V3.boulder.cache[obj]=e
+    end
+    local show=V3.boulder.enabled and boulderFilterAllows(kind)
+    e.gui.Enabled=show
+    e.label.Text=kind
+    e.label.TextSize=math.clamp(math.floor(13*(V3.boulder.size/60)+.5),8,34)
+    e.hl.Enabled=show and V3.boulder.highlight
+    e.hl.FillTransparency=V3.boulder.trans
+    e.hl.OutlineTransparency=math.min(.95,V3.boulder.trans*.5)
+end
+local function scanBouldersV3()
+    local found={}
+    for _,x in ipairs(Workspace:GetDescendants()) do
+        if x:IsA("Model") or x:IsA("BasePart") then
+            local obj,kind=boulderModel(x)
+            if obj and not found[obj] then
+                found[obj]=true
+                ensureBoulderEsp(obj,kind)
+            end
+        end
+    end
+    for obj,e in pairs(V3.boulder.cache) do
+        if not obj.Parent or not found[obj] then
+            pcall(function()e.gui:Destroy()end)
+            pcall(function()e.hl:Destroy()end)
+            V3.boulder.cache[obj]=nil
+        end
+    end
+end
+KNOWN_TOGGLES.BoulderEsp=function(v)V3.boulder.enabled=v==true;if not v then clearBoulderEsp()else task.spawn(scanBouldersV3)end end
+KNOWN_OPTIONS.BoulderEspSize=function(v)V3.boulder.size=math.clamp(tonumber(v)or 60,25,250)end
+KNOWN_OPTIONS.BoulderFilter=function(v)V3.boulder.filter=v3Set(v);if V3.boulder.enabled then task.spawn(scanBouldersV3)end end
+KNOWN_TOGGLES.BoulderHighlight=function(v)V3.boulder.highlight=v==true;if V3.boulder.enabled then task.spawn(scanBouldersV3)end end
+KNOWN_OPTIONS.BoulderHighlightTransparency=function(v)V3.boulder.trans=math.clamp((tonumber(v)or 55)/100,0,1);if V3.boulder.enabled then task.spawn(scanBouldersV3)end end
+V3.boulder.size=tonumber(UIState.values.BoulderEspSize)or 60
+V3.boulder.filter=v3Set(UIState.values.BoulderFilter)
+V3.boulder.highlight=UIState.values.BoulderHighlight~=false
+V3.boulder.trans=(tonumber(UIState.values.BoulderHighlightTransparency)or 55)/100
+track(RunService.Heartbeat:Connect(function(dt)
+    if S.Destroyed or not V3.boulder.enabled then return end
+    V3.boulder.clock+=dt
+    if V3.boulder.clock<.75 then return end
+    V3.boulder.clock=0
+    for obj,e in pairs(V3.boulder.cache) do
+        if not obj.Parent then
+            pcall(function()e.gui:Destroy()end)
+            pcall(function()e.hl:Destroy()end)
+            V3.boulder.cache[obj]=nil
+        else
+            ensureBoulderEsp(obj,e.kind)
+        end
+    end
+end))
+track(Workspace.DescendantAdded:Connect(function(x)
+    if not V3.boulder.enabled then return end
+    task.defer(function()
+        if x.Parent then
+            local obj,kind=boulderModel(x)
+            if obj and kind then ensureBoulderEsp(obj,kind)end
+        end
+    end)
+end))
+
+-- Auto Rune Pickup: completa os modos Near, Teleport e Both.
+-- A detecção abaixo é separada do filtro visual do Rune ESP.
+local autoRuneV3=false
+local function modeHas(name)
+    local v=UIState.values.AutoRunePickupMode
+    if type(v)=="table" then
+        for k,x in pairs(v) do
+            local a=x==true and tostring(k) or tostring(x)
+            if a==name then return true end
+        end
+        return false
+    end
+    return tostring(v)==name
+end
+local function runeBaseV3(x)
+    if not x or not x:IsA("BasePart") then return false end
+    if x.Name:lower():find("rune",1,true) then return true end
+    if x.Parent and x.Parent.Name:lower():find("rune",1,true) then return true end
+    return inheritedAttr(x,"TierName")~=nil and inheritedAttr(x,"LuckBoost")~=nil
+end
+local function runeCandidatesV3(origin,maxDist)
+    local out,seen={},{}
+    for _,x in ipairs(Workspace:GetDescendants()) do
+        if x:IsA("BasePart") and runeBaseV3(x) and not seen[x] then
+            seen[x]=true
+            local d=(x.Position-origin).Magnitude
+            if d<=maxDist and promptOf(x) then out[#out+1]={p=x,d=d} end
+        end
+    end
+    table.sort(out,function(a,b)return a.d<b.d end)
+    return out
+end
+local function pivotLocal(cf)
+    local c=char();local r=root()
+    if not c or not r then return false end
+    local ok=pcall(function()c:PivotTo(cf)end)
+    if not ok then pcall(function()r.CFrame=cf end)end
+    pcall(function()r.AssemblyLinearVelocity=Vector3.zero;r.AssemblyAngularVelocity=Vector3.zero end)
+    return true
+end
+local function grabRuneList(list,maxN)
+    local n=0
+    for _,q in ipairs(list) do
+        if n>=maxN then break end
+        local p=promptOf(q.p)
+        if p then
+            local ok=S.FirePrompt and S.FirePrompt(p)
+            if not ok and type(fireproximityprompt)=="function" then ok=pcall(fireproximityprompt,p) end
+            if ok then n+=1 end
+        end
+    end
+    return n
+end
+KNOWN_TOGGLES.AutoRunePickup=function(v)
+    autoRuneV3=v==true
+    S.AutoRunePickup=false
+end
+KNOWN_OPTIONS.AutoRunePickupMode=function(v)UIState.values.AutoRunePickupMode=v end
+track(RunService.Heartbeat:Connect(function(dt)
+    if S.Destroyed or not autoRuneV3 then return end
+    V3.runeTpClock+=dt
+    if V3.runeTpClock<.22 then return end
+    V3.runeTpClock=0
+    local r=root();if not r then return end
+    local nearMode=modeHas("Near")
+    local teleMode=modeHas("Teleport")
+    local bothMode=modeHas("Both")
+    if nearMode or bothMode then
+        local near=runeCandidatesV3(r.Position,20)
+        local grabbed=grabRuneList(near,4)
+        if nearMode or grabbed>0 then return end
+    end
+    if not teleMode and not bothMode then return end
+    local list=runeCandidatesV3(r.Position,5000)
+    local q=list[1];if not q then return end
+    local target=q.p.Position+Vector3.new(0,3,0)
+    pivotLocal(CFrame.new(target,q.p.Position))
+    grabRuneList({q},1)
+end))
+
+-- Teleporte por clique: hold-key + clique, conforme descrição original.
+KNOWN_TOGGLES.misc_click_tp=function(v)V3.clickTeleport=v==true end
+KNOWN_OPTIONS.misc_click_tp_key=function(v)V3.clickTeleportKey=tostring(v or"LeftControl")end
+V3.clickTeleport=UIState.values.misc_click_tp==true
+V3.clickTeleportKey=tostring(UIState.values.misc_click_tp_key or"LeftControl")
+local function clickKeyHeld()
+    local k=Enum.KeyCode[V3.clickTeleportKey]
+    return k and UIS:IsKeyDown(k)
+end
+local function teleportFromScreenPoint(pos)
+    if not V3.clickTeleport or not clickKeyHeld() then return end
+    local cam=Workspace.CurrentCamera;if not cam then return end
+    local ray=cam:ViewportPointToRay(pos.X,pos.Y)
+    local rp=RaycastParams.new();rp.FilterType=Enum.RaycastFilterType.Exclude;rp.FilterDescendantsInstances={char()}
+    local hit=Workspace:Raycast(ray.Origin,ray.Direction*5000,rp)
+    if not hit then return end
+    local r=root();if not r then return end
+    local dst=hit.Position+Vector3.new(0,3,0)
+    pivotLocal(CFrame.new(dst,dst+r.CFrame.LookVector))
+end
+track(UIS.InputBegan:Connect(function(i,p)
+    if p or UIS:GetFocusedTextBox() then return end
+    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+        teleportFromScreenPoint(i.Position)
+    end
+end))
+
+-- Aim Teleport: ao usar o atalho, teleporta para o cristal/minério sob o mouse.
+KNOWN_TOGGLES.AimTeleport=function(v)V3.aimTeleport=v==true end
+V3.aimTeleport=UIState.values.AimTeleport==true
+local function aimTeleportNow()
+    if not V3.aimTeleport then return end
+    local cam=Workspace.CurrentCamera;if not cam then return end
+    local pos=UIS:GetMouseLocation()
+    local ray=cam:ViewportPointToRay(pos.X,pos.Y)
+    local rp=RaycastParams.new();rp.FilterType=Enum.RaycastFilterType.Exclude;rp.FilterDescendantsInstances={char()}
+    local hit=Workspace:Raycast(ray.Origin,ray.Direction*5000,rp)
+    if not hit then return end
+    local ore=crystalPart(hit.Instance)
+    if not ore then return end
+    local dst=ore.Position+Vector3.new(0,3,0)
+    pivotLocal(CFrame.new(dst,ore.Position))
+end
+track(UIS.InputBegan:Connect(function(i,p)
+    if p or UIS:GetFocusedTextBox() or i.UserInputType~=Enum.UserInputType.Keyboard then return end
+    local key=tostring(UIState.values.AimTeleportKey or"None")
+    if V3.aimTeleport and key~="None" and i.KeyCode.Name==key then aimTeleportNow()end
+end))
+
+-- Top 1/2/3 por valor/luck/peso.
+local function allWorldCrystals()
+    local out,seen={},{}
+    for _,p in ipairs(Workspace:GetDescendants()) do
+        if p:IsA("BasePart") then
+            local x=crystalPart(p)
+            if x and not seen[x] and inheritedAttr(x,"Collected")~=true then
+                seen[x]=true
+                out[#out+1]=x
+            end
+        end
+    end
+    return out
+end
+local function tpRank(metric,rank)
+    local list=allWorldCrystals()
+    table.sort(list,function(a,b)
+        local av,bv
+        if metric=="Valor" then av,bv=crystalValueV3(a),crystalValueV3(b)
+        elseif metric=="Luck" then av,bv=crystalLuckV3(a),crystalLuckV3(b)
+        else av,bv=crystalWeightV3(a),crystalWeightV3(b) end
+        return av>bv
+    end)
+    local x=list[rank]
+    if not x then notify("Cristal correspondente não encontrado.",3);return end
+    local dst=x.Position+Vector3.new(0,3,0)
+    pivotLocal(CFrame.new(dst,x.Position))
+end
+for _,metric in ipairs({"Valor","Luck","Peso"}) do
+    for rank=1,3 do
+        local text="Top "..rank.." por "..metric
+        recovered[text]=true
+        hookButton(text,function()tpRank(metric,rank)end)
+    end
+end
+
+-- Anúncios: suprime apenas as quatro categorias observadas no original.
+local ANNOUNCE_MATCH={
+    ["Item Found"]={"item found","item encontrado"},
+    ["Burning"]={"burning","queimando"},
+    ["Too Far"]={"too far","muito longe"},
+    ["Can't Dig"]={"can't dig","cannot dig","não pode escavar","nao pode escavar"},
+}
+local function suppressAnnouncement(o)
+    if not V3.disableAnnounce or not(o:IsA("TextLabel")or o:IsA("TextButton")) then return end
+    local text=tostring(o.Text or""):lower()
+    local hit=false
+    for cat,needles in pairs(ANNOUNCE_MATCH) do
+        if V3.announceCats[cat] then
+            for _,needle in ipairs(needles) do
+                if text:find(needle,1,true) then hit=true;break end
+            end
+        end
+        if hit then break end
+    end
+    if not hit then return end
+    local p=o
+    for _=1,4 do
+        if not p or p:IsA("ScreenGui") then break end
+        if p:IsA("GuiObject") then p.Visible=false end
+        p=p.Parent
+    end
+end
+KNOWN_TOGGLES.misc_disable_announce=function(v)V3.disableAnnounce=v==true end
+KNOWN_OPTIONS.misc_disable_announce_categories=function(v)V3.announceCats=v3Set(v)end
+V3.disableAnnounce=UIState.values.misc_disable_announce==true
+V3.announceCats=v3Set(UIState.values.misc_disable_announce_categories)
+if PG then
+    track(PG.DescendantAdded:Connect(function(o)
+        if o:IsA("TextLabel")or o:IsA("TextButton") then task.defer(function()if o.Parent then suppressAnnouncement(o)end end)end
+    end))
+end
+
+-- Auto Base on Death: reproduz a ação documentada de clicar no botão "Base".
+local function tryActivateGuiButton(b)
+    if not b or not b.Parent or not b:IsA("GuiButton") or b.Visible==false then return false end
+    if type(firesignal)=="function" then
+        local ok=pcall(function()firesignal(b.Activated,nil,1)end)
+        if ok then return true end
+        ok=pcall(function()firesignal(b.MouseButton1Click)end)
+        if ok then return true end
+    end
+    local vim
+    pcall(function()vim=game:GetService("VirtualInputManager")end)
+    if vim then
+        local pos,size=b.AbsolutePosition,b.AbsoluteSize
+        local x,y=math.floor(pos.X+size.X/2),math.floor(pos.Y+size.Y/2)
+        local ok=pcall(function()
+            vim:SendMouseButtonEvent(x,y,0,true,game,0)
+            task.wait(.04)
+            vim:SendMouseButtonEvent(x,y,0,false,game,0)
+        end)
+        return ok
+    end
+    return false
+end
+local function findBaseButton()
+    if not PG then return nil end
+    for _,o in ipairs(PG:GetDescendants()) do
+        if o:IsA("TextButton") and o.Visible then
+            local t=(o.Text or""):match("^%s*(.-)%s*$")
+            if t=="Base" then return o end
+        end
+    end
+end
+local function autoBaseAttempt()
+    if not V3.autoBase then return end
+    for _=1,25 do
+        if not V3.autoBase then return end
+        local b=findBaseButton()
+        if b and tryActivateGuiButton(b) then return end
+        task.wait(.12)
+    end
+end
+KNOWN_TOGGLES.misc_auto_base_on_death=function(v)V3.autoBase=v==true end
+V3.autoBase=UIState.values.misc_auto_base_on_death==true
+local function bindDeath(c)
+    local h=c and c:FindFirstChildOfClass("Humanoid")
+    if h then track(h.Died:Connect(function()task.spawn(autoBaseAttempt)end))end
+end
+if LP.Character then bindDeath(LP.Character)end
+track(LP.CharacterAdded:Connect(function(c)task.defer(bindDeath,c)end))
+
+-- Cleanup desta camada.
+local oldDestroyV3=S.Destroy
+S.Destroy=function()
+    filteredPickupActive=false
+    V3.boulder.enabled=false
+    clearBoulderEsp()
+    if oldDestroyV3 then return oldDestroyV3()end
+end
+
+notify("Auditoria local V3 aplicada: Pickup, Boulder ESP, Runas, teleportes e utilidades.",4)
