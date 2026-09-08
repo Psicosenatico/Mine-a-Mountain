@@ -19,6 +19,17 @@ local BASE = "https://raw.githubusercontent.com/Psicosenatico/Mine-a-Mountain/ma
 local PART_COUNT = 15
 local parts = table.create(PART_COUNT)
 
+-- As partes 14 e 15 adicionam muitos locals. Quando todas as partes eram
+-- concatenadas diretamente, o compilador Luau tentava manter esses locals no
+-- mesmo frame principal e atingia o limite de registradores locais.
+-- Isolamos somente as camadas finais em closures próprias: elas continuam
+-- enxergando S/UIState/KNOWN_* e helpers anteriores como upvalues, mas seus
+-- locals passam a usar frames independentes.
+local ISOLATED_PARTS = {
+    [14] = true,
+    [15] = true,
+}
+
 for i = 1, PART_COUNT do
     local url = BASE .. string.format("part%02d.txt", i)
     local ok, body = pcall(function()
@@ -29,6 +40,10 @@ for i = 1, PART_COUNT do
         local msg = string.format("Falha ao carregar o bloco %02d.", i)
         reportError(msg)
         error("MAM2 V3: " .. msg)
+    end
+
+    if ISOLATED_PARTS[i] then
+        body = "\n;(function()\n" .. body .. "\nend)()\n"
     end
 
     parts[i] = body
