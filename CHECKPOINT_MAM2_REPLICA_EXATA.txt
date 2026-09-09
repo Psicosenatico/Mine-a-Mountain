@@ -1,0 +1,55 @@
+MINE A MOUNTAIN 2 — CHECKPOINT MESTRE DA RÉPLICA EXATA
+Data de retomada: 2026-09-09
+
+OBJETIVO DEFINITIVO
+- Produzir uma réplica independente do menu original com máxima fidelidade ao comportamento e à interface observados.
+- A única alteração visual autorizada é tradução para PT-BR.
+- Não redesenhar, simplificar, aproximar ou substituir recursos por implementações parecidas.
+- Não marcar uma função como completa sem evidência suficiente no material original capturado.
+- Não reproduzir, contornar ou reutilizar autenticação, chave, sessão ou licenciamento do serviço original.
+
+METODOLOGIA CONGELADA
+FASE 1 — INTERFACE ORIGINAL 100%
+1. Auditar LS_014 (biblioteca/UI), dumps V5.4, runtime V3 e código atual.
+2. Reconstruir somente interface: janela, dimensões, tabs, rail, floating, grupos, textos, tooltips, dropdowns, sliders, inputs, color pickers, keybinds, defaults, dependências e controles mobile condicionais.
+3. Traduzir somente textos visuais para PT-BR; preservar IDs e semântica interna.
+4. Não implementar/corrigir funções durante esta fase.
+5. Depois de auditada, congelar a interface.
+
+FASE 2 — FUNÇÃO POR FUNÇÃO
+- Para cada controle: callback -> upvalues -> helpers -> estado -> módulos -> constantes -> objetos -> prompts/remotes -> argumentos -> cooldowns -> cleanup -> interação com outros recursos.
+- Implementar uma ação por vez ou um pequeno módulo compartilhado por vez.
+- Commits pequenos e verificáveis.
+
+CLASSIFICAÇÃO INTERNA
+- COMPLETA: caminho inteiro sustentado pelos dados do original.
+- PARCIAL: há implementação real recuperada, mas falta dependência específica.
+- SEM DADOS: não há informação suficiente após esgotar todas as fontes disponíveis.
+- Não completar lacunas com suposição silenciosa.
+
+FONTES PRINCIPAIS DISPONÍVEIS
+- /mnt/data/MAM2_UI_S01_LS_014_raw.txt (~225 KB): biblioteca/UI original capturada.
+- /mnt/data/MAM2_UI_S01_LS_012_raw.txt (~839 KB): payload/core gameplay original capturado.
+- /mnt/data/MAM2_RECON_RUNTIME_V3_S01.txt (~1.4 MB): runtime detalhado, callbacks/upvalues/tabelas.
+- /mnt/data/MAM2_XGRS_V54_final_raw.txt (~189 KB): inventário visual/textual da interface original.
+- /mnt/data/Mine_a_Mountain_2_Interface_Original_PTBR_V3.txt (~87 KB): reconstrução anterior a ser usada apenas como referência/diferença, não como autoridade.
+- /mnt/data/Mine_a_Mountain_2_Reconstrucao_Estrutural_V1.txt: mapa estrutural do payload.
+- Capturadores/mapeadores V2/V3 existentes em /mnt/data.
+
+ESTADO DO REPOSITÓRIO ANTES DA NOVA FASE
+- Repositório: Psicosenatico/Mine-a-Mountain
+- Branch: main
+- Loader: "Mine a Mountain Test"
+- PART_COUNT atual: 15
+- part14 e part15 isolados em closures para evitar limite de registradores Luau.
+- A versão atual é material de pesquisa/reconstrução, NÃO a réplica final.
+- part16 especulativo de Boulder criado no turno anterior foi removido antes desta auditoria; ele não era carregado pelo loader.
+
+REGRA DE CONTINUIDADE
+- Se a conversa/tooling mostrar sinais de truncamento ou risco de perda de contexto, criar/atualizar este checkpoint antes de continuar.
+- Se uma ferramenta falhar, retomar do último checkpoint/commit; não reiniciar toda a pesquisa.
+- Evitar operações gigantes em uma única chamada; pesquisar em blocos por módulo/fonte.
+
+PRÓXIMO PASSO EXATO
+- Auditar a interface original completa começando por LS_014 + dump V5.4 + runtime V3.
+- Construir um inventário canônico da UI antes de alterar o loader/menu.
