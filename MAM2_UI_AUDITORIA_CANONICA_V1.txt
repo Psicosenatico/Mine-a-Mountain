@@ -1,0 +1,223 @@
+MINE A MOUNTAIN 2 — AUDITORIA CANÔNICA DA INTERFACE ORIGINAL V1
+Fase: INTERFACE SOMENTE
+
+OBJETIVO
+Reproduzir a interface original com fidelidade estrutural/visual. A única alteração visual autorizada é tradução de textos para PT-BR. Esta auditoria não valida nem implementa funções de gameplay.
+
+FONTES AUTORITATIVAS
+1. MAM2_UI_S01_LS_014_raw.txt — biblioteca/UI original capturada.
+2. MAM2_RECON_RUNTIME_V3_S01.txt — controles, Options/Toggles, valores e metadados runtime.
+3. MAM2_XGRS_V54_20260902_182546_final_raw(.txt/.json) — árvore/textos do PlayerHUD_Overlay original.
+4. Mine_a_Mountain_2_Interface_Original_PTBR_V3.txt — apenas referência/diff; NÃO é autoridade visual.
+
+BIBLIOTECA ORIGINAL — LS_014
+- ScreenGui: PlayerHUD_Overlay; ResetOnSpawn=false; ZIndexBehavior=Global.
+- FontColor = RGB(255,255,255)
+- MainColor = RGB(28,28,28)
+- BackgroundColor = RGB(20,20,20)
+- AccentColor = RGB(0,85,255)
+- OutlineColor = RGB(50,50,50)
+- RiskColor = RGB(255,50,50)
+- Font = Enum.Font.Code
+- Mobile UIScale default = 0.75
+- ScrollbarWidth default = 4
+- TabTileColor = RGB(41,51,83), transparency 0.35
+- TabTileSelectedColor = RGB(25,26,38), transparency 0.08
+- CornerRadius=5; CornerBaseRadius=4
+- TAB_SIZE=43; gap base=8; RAIL_MAX_COLUMNS=5
+- TOPBAR_H=33; TOPBAR_GAP=8
+- Cabeçalho interno da janela = 36 px.
+- TabRail original é ScrollingFrame filho da janela externa e recalcula linhas/colunas dinamicamente.
+- No Mobile, groupboxes de ambas as sides são reparentados para a coluna esquerda; coluna direita fica oculta.
+- Layout mobile usa aproximadamente 55% do viewport, respeitando rail e UIScale.
+
+TOPBAR ORIGINAL
+A barra externa acima da janela EXISTE no original. Portanto não deve ser simplesmente removida.
+Geometria/visual confirmado:
+- fundo RGB(5,5,7), transparency 0.06
+- altura 33
+- gap para a janela 8
+- corner 10
+- avatar 20x20 em x=6
+- texto inicia em x=32, GothamMedium 13
+- arrastável
+O original pode mostrar informação de versão, link externo e tempo de licença. A réplica independente deve preservar geometria, mas neutralizar autenticação/key/session/licenciamento e links ligados ao serviço original.
+
+GLOBAL TOGGLE ORIGINAL
+- ScreenGui XGRSGlobalToggle
+- botão 50x50
+- Position=(16,55)
+- Background=MainColor, transparency .1
+- Image asset 7734053495
+- ImageColor=AccentColor
+- corner=12 (rounded-square, NÃO círculo perfeito)
+- stroke Accent espessura 2
+- visível no Mobile
+
+TABS ORIGINAIS — 8
+1. Main
+2. Crystals
+3. Boulders
+4. Plots
+5. Teleports
+6. Shops
+7. Misc
+8. UI Settings
+
+GROUPBOXES TOP-LEVEL ORIGINAIS — 43
+[Main]
+- Player Dupe Nuker
+- Information
+- Radar Visuals
+- Guide
+- Crystal Duper Main
+- Stats
+- Crystal Duper
+
+[Crystals]
+- Pickup
+- Crystal ESP
+- Auto Favorite
+- Money Farm
+- Fortune Runes & Session
+
+[Boulders]
+- Boulder ESP
+- Boulder Farm
+- Territory Clearing
+
+[Plots]
+- Auto Placer
+- Placement Position
+- Runes
+- Plot Capacity
+
+[Teleports]
+- Top Crystals
+
+[Shops]
+- Bomb Shop
+- Radar Shop
+- Pickaxe Shop
+- Upgrades
+
+[Misc]
+- Movement
+- Players
+- Server Action
+- Utility
+- Environment
+- Camera
+- Survival
+- Player ESP
+- Performance
+- Camera Extras
+- Announcements
+- Auto Close Popups
+- Menu
+
+[UI Settings]
+- Configuration
+- Themes
+- Update Log
+- Watermark & Keybinds
+- Notifications
+- Auto Re-Execute
+
+CONTROLES RUNTIME — INVENTÁRIO CANÔNICO
+Total = 251
+- Toggle: 88
+- Slider: 49
+- Dropdown: 34
+- KeyPicker: 21
+- ColorPicker: 6
+- Input: 53
+
+Foram localizadas 206 declarações explícitas de controles na reconstrução de referência: os 45 IDs restantes do runtime são TextBox auxiliares gerados pelos sliders originais.
+
+Inputs standalone reais:
+- AutoFavoriteLuck
+- AutoFavoriteValue
+- EspMinLuck
+- EspMinValue
+- M2CrysLim
+- M2RuneLim
+- SaveManager_ConfigName
+- ThemeManager_CustomThemeName
+
+SLIDERS SEM CAIXA NUMÉRICA AUXILIAR NO ORIGINAL
+A reconstrução artesanal anterior criava uma caixa numérica para todo slider. O runtime prova que quatro sliders NÃO têm `<id>_input`:
+- NotificationsManager_Duration
+- NotificationsManager_PosX
+- NotificationsManager_PosY
+- ThemeManager_CornerRadius
+
+DIVERGÊNCIAS COMPROVADAS NA RECONSTRUÇÃO ANTERIOR
+1. A reconstrução anterior possui 47 groupboxes artesanais; original possui 43 top-level.
+2. Em Boulders, Auto Near Collect, Rune ESP e Auto Rune Pickup não são três groupboxes top-level separados. Eles estão inseridos na estrutura do Boulder ESP.
+3. Boulder Farm Settings fica dentro do groupbox Boulder Farm; Territory Clearing é top-level separado.
+4. AutoRunePickupMode original é Dropdown Multi=true com Values={Near, Teleport}. Não há valor literal `Both`; marcar Near+Teleport simultaneamente representa o modo combinado.
+5. `addSlider` artesanal não pode gerar TextBox universalmente por causa dos 4 sliders sem input listados acima.
+6. A TopBar externa existe no original; o erro anterior era fidelidade/conteúdo, não sua mera existência.
+7. GlobalToggle original é rounded-square corner 12, não botão circular.
+8. TabRail original usa algoritmo dinâmico; não deve ser travado manualmente em uma grade fixa 2x4.
+9. A biblioteca original tem comportamento responsivo e reparenting de groupboxes que deve ser reaproveitado, não refeito por aproximação.
+
+FLY — UI MOBILE DINÂMICA CONFIRMADA
+O próprio texto original diz:
+`Steer with the movement thumbstick. An up/down pad appears on the right while Fly is on -- drag it by the grip bar to move it. Speed comes from the slider below.`
+Também confirma:
+- keybind F
+- modo Hold no registro de keybind
+- Fly Speed default mostrado = 125 studs/s
+- limite visual mostrado = 1000 studs/s
+Portanto a interface final precisa incluir o pad mobile Up/Down condicionado ao Fly. A existência está 100% confirmada. A geometria/propriedades exatas do pad ainda devem ser pesquisadas nos dados antes de implementá-lo; não será aproximado.
+
+AMOSTRA AUTORITATIVA DE OPTION RUNTIME
+AutoRunePickupMode:
+- Type=Dropdown
+- Multi=true
+- Values={Near, Teleport}
+- Value inicial={Near=true}
+
+GridSpacing:
+- Type=Slider
+- Groupbox=`Placement Position`
+- Side=2
+- Min=2
+- Max=10
+- Default=4
+- Rounding=1
+
+ClearGlideSpeed:
+- Groupbox=`Territory Clearing`
+- Side=2
+- Min=50
+- Max=2500
+- Default=500
+
+PkSzFlt:
+- Type=Dropdown
+- Groupbox=`Crystal ESP`
+- Side=1
+- Multi=true
+- Values={S / Small, M / Medium, L / Large, XL / Extra Large, Giant, Colossal, Titan, Leviathan}
+
+PlaceMinMoney:
+- Groupbox=`Auto Placer`
+- Side=1
+- Min=0
+- Max=1000000
+- Default=0
+
+PRÓXIMO PASSO
+1. Não alterar gameplay.
+2. Montar staging da UI usando a biblioteca LS_014 original sanitizada, em vez do framework artesanal atual.
+3. Preservar IDs, tipos, defaults, sides, dependências, tooltips e ordem original.
+4. Traduzir textos visuais somente.
+5. Encontrar todos os elementos condicionais/dinâmicos, começando pelo Fly mobile pad.
+6. Só depois de a UI passar a auditoria estrutural, congelá-la e iniciar função por função.
+
+STATUS
+AUDITORIA CANÔNICA V1 CONCLUÍDA.
+A interface atual no loader principal ainda NÃO é considerada a réplica final.
